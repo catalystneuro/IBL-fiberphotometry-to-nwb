@@ -1,70 +1,80 @@
 """Primary script to run to convert an entire session for of data using the NWBConverter."""
+
+import time
 from pathlib import Path
-from typing import Union
-import datetime
-from zoneinfo import ZoneInfo
+from typing import Literal
 
-from neuroconv.utils import load_dict_from_file, dict_deep_update
+from one.api import ONE
 
-from ibl_fiberphotometry_to_nwb.fiber_photometry import FiberPhotometryNWBConverter
+from ibl_fiberphotometry_to_nwb.fiber_photometry.conversion import (
+    convert_processed_session,
+    convert_raw_session,
+)
 
 
-def session_to_nwb(data_dir_path: Union[str, Path], output_dir_path: Union[str, Path], stub_test: bool = False):
+def session_to_nwb(
+    base_path: Path,
+    eid: str,
+    mode: Literal["processed", "raw"],
+    stub_test: bool = False,
+    append_on_disk_nwbfile: bool = False,
+    verbose: bool = False,
+):
+    """
+    Convert a single session to NWB format.
 
-    data_dir_path = Path(data_dir_path)
-    output_dir_path = Path(output_dir_path)
-    if stub_test:
-        output_dir_path = output_dir_path / "nwb_stub"
-    output_dir_path.mkdir(parents=True, exist_ok=True)
+    Parameters
+    ----------
+    base_path : Path
+        Base path to the directory containing the session data.
+    eid : str
+        The experiment ID (session ID) for the session.
+    mode : Literal["processed", "raw"]
+        The conversion mode to use.
+    stub_test : bool, optional
+        Whether to run a stub test with limited data, by default False.
+    append_on_disk_nwbfile : bool, optional
+        Whether to append data to an existing on-disk NWB file, by default False.
+    verbose : bool, optional
+        Whether to print detailed conversion information, by default False.
+    """
+    match mode:
+        case "processed":
+            return convert_processed_session(
+                eid=eid,
+                one=ONE(),  # base_url="https://alyx.internationalbrainlab.org"
+                stub_test=stub_test,
+                base_path=base_path,
+                append_on_disk_nwbfile=append_on_disk_nwbfile,
+                verbose=verbose,
+            )
 
-    session_id = "subject_identifier_usually"
-    nwbfile_path = output_dir_path / f"{session_id}.nwb"
-
-    source_data = dict()
-    conversion_options = dict()
-
-    # Add Recording
-    source_data.update(dict(Recording=dict()))
-    conversion_options.update(dict(Recording=dict(stub_test=stub_test)))
-
-    # Add Sorting
-    source_data.update(dict(Sorting=dict()))
-    conversion_options.update(dict(Sorting=dict()))
-
-    # Add Behavior
-    source_data.update(dict(Behavior=dict()))
-    conversion_options.update(dict(Behavior=dict()))
-
-    converter = FiberPhotometryNWBConverter(source_data=source_data)
-
-    # Add datetime to conversion
-    metadata = converter.get_metadata()
-    date = datetime.datetime(year=2020, month=1, day=1, tzinfo=ZoneInfo("US/Eastern"))
-    metadata["NWBFile"]["session_start_time"] = date
-
-    # Update default metadata with the editable in the corresponding yaml file
-    editable_metadata_path = Path(__file__).parent / "fiber_photometry_metadata.yaml"
-    editable_metadata = load_dict_from_file(editable_metadata_path)
-    metadata = dict_deep_update(metadata, editable_metadata)
-
-    metadata["Subject"]["subject_id"] = "a_subject_id"  # Modify here or in the yaml file
-
-    # Run conversion
-    converter.run_conversion(metadata=metadata, nwbfile_path=nwbfile_path, conversion_options=conversion_options)
+        case "raw":
+            return convert_raw_session(
+                eid=eid,
+                one=ONE(),  # base_url="https://alyx.internationalbrainlab.org"
+                stub_test=stub_test,
+                base_path=base_path,
+                append_on_disk_nwbfile=append_on_disk_nwbfile,
+                verbose=verbose,
+            )
+        case _:
+            raise ValueError(f"Mode {mode} not recognized. Available modes: 'processed', 'raw'.")
 
 
 if __name__ == "__main__":
 
     # Parameters for conversion
-    data_dir_path = Path("/Directory/With/Raw/Formats/")
-    output_dir_path = Path("~/conversion_nwb/")
-    stub_test = False
-
-<<<<<<< HEAD:IBL-fiberphotometry-to-nwb/src/ibl_fiberphotometry_to_nwb/fiber_photometry/convert_session.py
-    session_to_nwb(data_dir_path=data_dir_path, output_dir_path=output_dir_path, stub_test=stub_test)
-=======
-    session_to_nwb(data_dir_path=data_dir_path,
-                    output_dir_path=output_dir_path,
-                    stub_test=stub_test,
-                    )
->>>>>>> main:IBL-fiberphotometry-to-nwb/src/ibl_fiberphotometry_to_nwb/fiber_photometry/fiber_photometry_convert_session.py
+    eid = "fd688232-0dd8-400b-aa66-dc23460d9f98"
+    stub_test = True  # Set to True for a quick test conversion with limited data
+    start_time = time.time()
+    mode = "processed"  # Choose between 'processed' and 'raw'
+    session_to_nwb(
+        base_path=Path("E:/IBL-data-share"),
+        eid=eid,
+        mode=mode,
+        stub_test=stub_test,
+        append_on_disk_nwbfile=False,
+        verbose=True,
+    )
+    print(f"Conversion completed in {time.time() - start_time:.2f} seconds.")

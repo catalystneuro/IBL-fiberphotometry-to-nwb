@@ -1,0 +1,52 @@
+Ophys:
+  Device:
+    - name: TwoPhotonFiberPhotometry
+      description: The two photon fiber photometry used to acquire green fluorescence on several FOVs.
+
+  TwoPhotonSeries:
+    - name: TwoPhotonSeries # Unique name for each FOV, e.g., TwoPhotonSeriesFOV00, TwoPhotonSeriesFOV01, etc.
+      description: "The <type> two-photon imaging data acquired using the fiber photometry on <fov_name> (UUID: <fov_uuid>) ."
+      imaging_plane: ImagingPlane # Unique name for each FOV, e.g., ImagingPlaneFOV00, ImagingPlaneFOV01, etc.
+
+  ImagingPlane:
+    - name: ImagingPlane # Unique name for each FOV, e.g., ImagingPlaneFOV00, ImagingPlaneFOV01, etc.
+      description: "Field of view <fov_idx> (UUID: <fov_uuid>). Image Depth: <z_position>um. Center location: ML=<center_mlapdv[0]:.1f>um, AP=<center_mlapdv[1]:.1f>um, DV=<center_mlapdv[2]:.1f>um. Allen CCF 2017 brain region ID: <brain_region_id>. Image dimensions: <dimensions[0]>x<dimensions[1]> pixels."
+      excitation_lambda: 920.0 # To be confirmed
+      imaging_rate: 5.07
+      location: <brain region ID>
+      reference_frame: "Stereotactic coordinates relative to bregma. ML (medial-lateral): positive is lateral (away from midline). AP (anterior-posterior): positive is anterior, negative is posterior. DV (dorsal-ventral): negative is ventral (deeper). Coordinates from Allen Common Coordinate Framework (CCF) 2017."
+      origin_coords: <origin_coords>
+      origin_coords_unit: meters
+      grid_spacing: <grid_spacing>
+      grid_spacing_unit: meters
+      indicator: GCaMP6s # actually depend on subject --> they extract from subject genotype: https://github.com/int-brain-lab/ibllib/blob/78e82df8a51de0be880ee4076d2bb093bbc1d2c1/ibllib/pipes/fiber_photometry_tasks.py#L536-L555
+      optical_channel:
+        - name: OpticalChannel
+          emission_lambda: 510.0 # To be confirmed
+          description: Optical channel recording GCaMP6f Ca2+ bound emission.
+
+  ImageSegmentation:
+    plane_segmentations:
+      - name: PlaneSegmentation # Unique name for each FOV, e.g., PlaneSegmentationFOV00, PlaneSegmentationFOV01, etc.
+        description: "Spatial components of segmented ROIs for <fov_name> (UUID: <fov_uuid>)."
+        imaging_plane: ImagingPlane
+
+  Fluorescence:
+    plane_segmentation: # Unique name for each FOV, e.g., PlaneSegmentationFOV00, PlaneSegmentationFOV01, etc.
+      raw:
+        name: RawROIResponseSeries # Unique name for each FOV, e.g., RawROIResponseSeriesFOV00, RawROIResponseSeriesFOV01, etc.
+        description: "Temporal components of segmented ROIs for <fov_name> (UUID: <fov_uuid>). The raw GCaMP fluorescence traces."
+        unit: n.a.
+      deconvolved:
+        name: DeconvolvedROIResponseSeries # Unique name for each FOV, e.g., DeconvolvedROIResponseSeriesFOV00, DeconvolvedROIResponseSeriesFOV01, etc.
+        description: "Temporal components of segmented ROIs for <fov_name> (UUID: <fov_uuid>). The deconvolved activity traces."
+        unit: n.a.
+      neuropil:
+        name: NeuropilResponseSeries # Unique name for each FOV, e.g., NeuropilResponseSeriesFOV00, NeuropilResponseSeriesFOV01, etc.
+        description: "Temporal components of segmented ROIs for <fov_name> (UUID: <fov_uuid>). The neuropil traces."
+        unit: n.a.
+  SegmentationImages:
+    plane_segmentation: # Unique name for each FOV, e.g., PlaneSegmentationFOV00, PlaneSegmentationFOV01, etc.
+      mean:
+        name: MeanImage # Unique name for each FOV, e.g., MeanImageFOV00, MeanImageFOV01, etc.
+        description: "The mean image for <fov_name> (UUID: <fov_uuid>)."

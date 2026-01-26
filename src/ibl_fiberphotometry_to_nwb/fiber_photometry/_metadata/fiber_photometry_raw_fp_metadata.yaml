@@ -1,0 +1,23 @@
+Ophys:
+  Device:
+    - name: TwoPhotonFiberPhotometry
+      description: The two photon fiber photometry used to acquire green fluorescence on several FOVs.
+
+  TwoPhotonSeries:
+    - name: TwoPhotonSeries # Unique name for each FOV, e.g., TwoPhotonSeriesFOV00, TwoPhotonSeriesFOV01, etc.
+      description: "The <type> two-photon imaging data acquired using the fiber photometry on <fov_name> (UUID: <fov_uuid>) ."
+      imaging_plane: ImagingPlane # Unique name for each FOV, e.g., ImagingPlaneFOV00, ImagingPlaneFOV01, etc.
+
+  ImagingPlane:
+    - name: ImagingPlane # Unique name for each FOV, e.g., ImagingPlaneFOV00, ImagingPlaneFOV01, etc.
+      description: "Field of view <fov_idx> (UUID: <fov_uuid>). Image dimensions: <dimensions[0]>x<dimensions[1]> pixels."
+      excitation_lambda: 920.0 # To be confirmed
+      imaging_rate: 5.07
+      location: <brain region ID>
+      grid_spacing: <grid_spacing>
+      grid_spacing_unit: meters
+      indicator: GCaMP6s # actually depend on subject --> they extract from subject genotype: https://github.com/int-brain-lab/ibllib/blob/78e82df8a51de0be880ee4076d2bb093bbc1d2c1/ibllib/pipes/fiber_photometry_tasks.py#L536-L555
+      optical_channel:
+        - name: OpticalChannel
+          emission_lambda: 510.0 # To be confirmed
+          description: GCaMP6s emission.
