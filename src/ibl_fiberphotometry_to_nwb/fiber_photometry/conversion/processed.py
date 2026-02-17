@@ -27,6 +27,7 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.datainterfaces import (
     FiberPhotometryWheelPositionInterface,
 )
 from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
+    get_available_tasks,
     sanitize_subject_id_for_dandi,
 )
 
@@ -34,7 +35,7 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
 def convert_processed_session(
     eid: str,
     one: ONE,
-    base_path: Path,
+    output_path: Path,
     stub_test: bool = False,
     append_on_disk_nwbfile: bool = False,
     verbose: bool = True,
@@ -51,8 +52,8 @@ def convert_processed_session(
         If True, creates minimal NWB for testing without downloading large files.
         In stub mode, spike properties (spike_amplitudes, spike_distances_from_probe_tip)
         are automatically skipped to reduce memory usage.
-    base_path : Path, optional
-        Base output directory for NWB files
+    output_path : Path, optional
+        Base output directory for NWB files.
     append_on_disk_nwbfile: bool, optional
         If True, append to an existing on-disk NWB file instead of creating a new one.
     Returns
@@ -62,11 +63,9 @@ def convert_processed_session(
     """
     if verbose:
         print(f"Starting PROCESSED conversion for session {eid}...")
+    start_time = time.time()
 
     # Setup paths
-    start_time = time.time()
-    paths = setup_paths(one, eid, base_path=base_path)
-
     session_info = one.alyx.rest("sessions", "read", id=eid)
     subject_nickname = session_info.get("subject")
     if isinstance(subject_nickname, dict):
@@ -74,13 +73,14 @@ def convert_processed_session(
     if not subject_nickname:
         subject_nickname = "unknown"
 
-    # New structure: nwbfiles/{full|stub}/sub-{subject}/*.nwb
-    conversion_type = "stub" if stub_test else "full"
     # Sanitize subject nickname for DANDI compliance (replace underscores with hyphens)
     subject_id_for_filenames = sanitize_subject_id_for_dandi(subject_nickname)
-    output_dir = Path(paths["output_folder"]) / conversion_type / f"sub-{subject_id_for_filenames}"
+
+    # New structure: nwbfiles/{full|stub}/sub-{subject}/*.nwb
+    conversion_mode = "stub" if stub_test else "full"
+    output_dir = output_path / conversion_mode / f"sub-{subject_id_for_filenames}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    nwbfile_path = output_dir / f"sub-{subject_id_for_filenames}_ses-{eid}_desc-processed_behavior+fp.nwb"
+    nwbfile_path = output_dir / f"sub-{subject_id_for_filenames}_ses-{eid}_desc-processed_behavior+ophys.nwb"
 
     # ========================================================================
     # STEP 1: Define data interfaces
@@ -178,7 +178,7 @@ def convert_processed_session(
     metadata = converter.get_metadata()
 
     # Update default metadata with the editable in the corresponding yaml file
-    editable_metadata_path = Path(__file__).parent.parent / "_metadata" / "fiber_photometry_general_metadata.yaml"
+    editable_metadata_path = Path(__file__).parent.parent / "_metadata" / "general_metadata.yaml"
     editable_metadata = load_dict_from_file(editable_metadata_path)
     metadata = dict_deep_update(metadata, editable_metadata)
 
@@ -240,7 +240,7 @@ if __name__ == "__main__":
         eid="fd688232-0dd8-400b-aa66-dc23460d9f98",
         one=ONE(),  # base_url="https://alyx.internationalbrainlab.org"
         stub_test=True,
-        base_path=Path("E:/IBL-data-share"),
+        output_path=Path("E:/IBL-fiberphotometry-nwbfiles"),
         append_on_disk_nwbfile=False,
         verbose=True,
     )
