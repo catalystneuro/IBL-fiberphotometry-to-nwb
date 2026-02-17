@@ -1,6 +1,3 @@
-from .nwbconverter import (
-    ProcessedFiberPhotometryNWBConverter,
-    RawFiberPhotometryNWBConverter,
-)
+from .nwbconverter import FiberPhotometryNWBConverter
 
-__all__ = ["ProcessedFiberPhotometryNWBConverter", "RawFiberPhotometryNWBConverter"]
+__all__ = ["FiberPhotometryNWBConverter"]

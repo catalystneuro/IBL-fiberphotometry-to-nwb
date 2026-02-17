@@ -3,19 +3,35 @@
 import time
 from pathlib import Path
 
-from ibl_to_nwb.datainterfaces import RawVideoInterface
+from ibl_to_nwb.datainterfaces import (
+    BrainwideMapTrialsInterface,
+    IblPoseEstimationInterface,
+    LickInterface,
+    PassiveIntervalsInterface,
+    PassiveReplayStimInterface,
+    PupilTrackingInterface,
+    RawVideoInterface,
+    RoiMotionEnergyInterface,
+    SessionEpochsInterface,
+)
 from ndx_ibl import IblMetadata, IblSubject
 from neuroconv.utils import dict_deep_update, load_dict_from_file
 from one.api import ONE
 from pynwb import NWBFile
 
-from ibl_fiberphotometry_to_nwb.fiber_photometry import RawFiberPhotometryNWBConverter
+from ibl_fiberphotometry_to_nwb.fiber_photometry import FiberPhotometryNWBConverter
+from ibl_fiberphotometry_to_nwb.fiber_photometry.datainterfaces import (
+    FiberPhotometryWheelKinematicsInterface,
+    FiberPhotometryWheelMovementsInterface,
+    FiberPhotometryWheelPositionInterface,
+)
 from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
+    get_available_tasks,
     sanitize_subject_id_for_dandi,
 )
 
 
-def convert_raw_session(
+def session_to_nwb(
     eid: str,
     one: ONE,
     output_path: Path,
@@ -23,7 +39,7 @@ def convert_raw_session(
     append_on_disk_nwbfile: bool = False,
     verbose: bool = True,
 ) -> dict:
-    """Convert IBL raw session to NWB.
+    """Convert IBL fiber-photometry session to NWB.
 
     Parameters
     ----------
@@ -45,7 +61,7 @@ def convert_raw_session(
         Conversion result information including NWB file path and timing
     """
     if verbose:
-        print(f"Starting RAW conversion for session {eid}...")
+        print(f"Starting conversion for session {eid}...")
     start_time = time.time()
 
     # Setup paths
@@ -63,7 +79,7 @@ def convert_raw_session(
     conversion_mode = "stub" if stub_test else "full"
     output_dir = output_path / conversion_mode / f"sub-{subject_id_for_filenames}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    nwbfile_path = output_dir / f"sub-{subject_id_for_filenames}_ses-{eid}_desc-raw_behavior+ophys.nwb"
+    nwbfile_path = output_dir / f"sub-{subject_id_for_filenames}_ses-{eid}_desc-raw+processed_behavior+ophys.nwb"
 
     # ========================================================================
     # STEP 1: Define data interfaces
@@ -76,6 +92,76 @@ def convert_raw_session(
     data_interfaces = dict()
     conversion_options = dict()
     interface_kwargs = dict(one=one, session=eid)
+
+    # Behavioral data
+    data_interfaces["BrainwideMapTrials"] = BrainwideMapTrialsInterface(**interface_kwargs)
+    conversion_options.update({"BrainwideMapTrials": dict(stub_test=stub_test, stub_trials=10)})
+
+    # Wheel data - add each interface if its data is available
+    available_tasks = get_available_tasks(**interface_kwargs)
+    for task in available_tasks:
+        if FiberPhotometryWheelPositionInterface.check_availability(one, eid, task=task)["available"]:
+            data_interfaces[f"{task.replace('task_', 'Task')}WheelPosition"] = FiberPhotometryWheelPositionInterface(
+                **interface_kwargs, task=task
+            )
+            conversion_options.update({f"{task.replace('task_', 'Task')}WheelPosition": dict(stub_test=stub_test)})
+        if FiberPhotometryWheelKinematicsInterface.check_availability(one, eid, task=task)["available"]:
+            data_interfaces[f"{task.replace('task_', 'Task')}WheelKinematics"] = (
+                FiberPhotometryWheelKinematicsInterface(**interface_kwargs, task=task)
+            )
+            conversion_options.update({f"{task.replace('task_', 'Task')}WheelKinematics": dict(stub_test=stub_test)})
+        if FiberPhotometryWheelMovementsInterface.check_availability(one, eid, task=task)["available"]:
+            data_interfaces[f"{task.replace('task_', 'Task')}WheelMovements"] = FiberPhotometryWheelMovementsInterface(
+                **interface_kwargs, task=task
+            )
+            conversion_options.update({f"{task.replace('task_', 'Task')}WheelMovements": dict(stub_test=stub_test)})
+
+    # Session epochs (high-level task vs passive phases)
+    if SessionEpochsInterface.check_availability(one, eid)["available"]:
+        data_interfaces["SessionEpochs"] = SessionEpochsInterface(**interface_kwargs)
+
+    # Passive period data - add each interface if its data is available
+    if PassiveIntervalsInterface.check_availability(one, eid)["available"]:
+        data_interfaces["PassiveIntervals"] = PassiveIntervalsInterface(**interface_kwargs)
+
+    # NOTE: PassiveRFMInterface is temporarily disabled due to data quality issues - waiting for upstream fix
+    # if PassiveRFMInterface.check_availability(one, eid)["available"]:
+    #     data_interfaces["PassiveRFM"] = PassiveRFMInterface(**interface_kwargs)
+
+    if PassiveReplayStimInterface.check_availability(one, eid)["available"]:
+        data_interfaces["PassiveReplayStim"] = PassiveReplayStimInterface(**interface_kwargs)
+
+    # Licks - optional interface
+    if LickInterface.check_availability(one, eid)["available"]:
+        data_interfaces["Licks"] = LickInterface(**interface_kwargs)
+
+    # Camera-based interfaces (pose estimation, pupil tracking, ROI motion energy)
+    # Check availability per camera since not all sessions have all cameras
+    for camera_view in ["left", "right", "body"]:
+        camera_name = f"{camera_view}Camera"
+
+        # Pose estimation - check_availability handles Lightning Pose → DLC fallback
+        pose_availability = IblPoseEstimationInterface.check_availability(one, eid, camera_name=camera_name)
+        if pose_availability["available"]:
+            # Determine tracker from which alternative was found
+            alternative = pose_availability.get("alternative_used", "lightning_pose")
+            tracker = "lightningPose" if alternative == "lightning_pose" else "dlc"
+            data_interfaces[f"{camera_name}PoseEstimation"] = IblPoseEstimationInterface(
+                camera_name=camera_name, tracker=tracker, **interface_kwargs
+            )
+
+        # Pupil tracking - only for left/right cameras (body camera doesn't capture eyes)
+        if camera_view in ["left", "right"]:
+            if PupilTrackingInterface.check_availability(one, eid, camera_name=camera_name)["available"]:
+                data_interfaces[f"{camera_name}PupilTracking"] = PupilTrackingInterface(
+                    camera_name=camera_name, **interface_kwargs
+                )
+
+        # ROI motion energy
+        if RoiMotionEnergyInterface.check_availability(one, eid, camera_name=camera_name)["available"]:
+            data_interfaces[f"{camera_name}RoiMotionEnergy"] = RoiMotionEnergyInterface(
+                camera_name=camera_name, **interface_kwargs
+            )
 
     # Add raw behavioral video
     # Add video interfaces for cameras that have timestamps
@@ -128,6 +214,7 @@ def convert_raw_session(
             subject_id=subject_id_for_filenames,
             camera_name=camera_view,
         )
+
     interface_creation_time = time.time() - interface_creation_start
     if verbose:
         print(f"Data interfaces created in {interface_creation_time:.2f}s")
@@ -135,7 +222,7 @@ def convert_raw_session(
     # ========================================================================
     # STEP 2: Create converter
     # ========================================================================
-    converter = RawFiberPhotometryNWBConverter(one=one, session=eid, data_interfaces=data_interfaces)
+    converter = FiberPhotometryNWBConverter(one=one, session=eid, data_interfaces=data_interfaces)
 
     # ========================================================================
     # STEP 3: Get metadata
@@ -184,12 +271,12 @@ def convert_raw_session(
         total_time_seconds = time.time() - start_time
         total_time_hours = total_time_seconds / 3600
         print(f"NWB file written in {write_time:.2f}s")
-        print(f"RAW NWB file size: {nwb_size_gb:.2f} GB ({nwb_size_bytes:,} bytes)")
+        print(f"NWB file size: {nwb_size_gb:.2f} GB ({nwb_size_bytes:,} bytes)")
         print(f"Write speed: {nwb_size_gb / (write_time / 3600):.2f} GB/hour")
-        print(f"RAW conversion total time: {total_time_seconds:.2f}s")
-        print(f"RAW conversion total time: {total_time_hours:.2f} hours")
-        print(f"RAW conversion completed: {nwbfile_path}")
-        print(f"RAW NWB saved to: {nwbfile_path}")
+        print(f"conversion total time: {total_time_seconds:.2f}s")
+        print(f"conversion total time: {total_time_hours:.2f} hours")
+        print(f"conversion completed: {nwbfile_path}")
+        print(f"NWB saved to: {nwbfile_path}")
 
     return {
         "nwbfile_path": nwbfile_path,
@@ -200,12 +287,17 @@ def convert_raw_session(
 
 
 if __name__ == "__main__":
-    # Example usage
-    convert_raw_session(
-        eid="fd688232-0dd8-400b-aa66-dc23460d9f98",
+
+    # Parameters for conversion
+    eid = "fd688232-0dd8-400b-aa66-dc23460d9f98"
+    stub_test = True  # Set to True for a quick test conversion with limited data
+    start_time = time.time()
+    session_to_nwb(
+        eid=eid,
         one=ONE(),  # base_url="https://alyx.internationalbrainlab.org"
-        stub_test=True,
+        stub_test=stub_test,
         output_path=Path("E:/IBL-fiberphotometry-nwbfiles"),
         append_on_disk_nwbfile=False,
         verbose=True,
     )
+    print(f"Conversion completed in {time.time() - start_time:.2f} seconds.")

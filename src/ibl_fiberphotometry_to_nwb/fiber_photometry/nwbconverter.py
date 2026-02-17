@@ -58,30 +58,13 @@ class IblConverter(ConverterPipe):
         return metadata
 
 
-class RawFiberPhotometryNWBConverter(IblConverter):
+class FiberPhotometryNWBConverter(IblConverter):
     """Primary conversion class for raw IBL fiber photometry datasets."""
 
     def get_metadata(self) -> dict:
         metadata = super().get_metadata()
 
-        fiber_photometry_metadata_file_path = (
-            Path(__file__).parent / "_metadata" / "fiber_photometry_general_metadata.yaml"
-        )
-        experiment_metadata = load_dict_from_file(file_path=fiber_photometry_metadata_file_path)
-        metadata = dict_deep_update(metadata, experiment_metadata)
-
-        return metadata
-
-
-class ProcessedFiberPhotometryNWBConverter(IblConverter):
-    """Primary conversion class for processed IBL fiber photometry datasets."""
-
-    def get_metadata(self) -> dict:
-        metadata = super().get_metadata()
-
-        fiber_photometry_metadata_file_path = (
-            Path(__file__).parent / "_metadata" / "fiber_photometry_general_metadata.yaml"
-        )
+        fiber_photometry_metadata_file_path = Path(__file__).parent / "_metadata" / "general_metadata.yaml"
         experiment_metadata = load_dict_from_file(file_path=fiber_photometry_metadata_file_path)
         metadata = dict_deep_update(metadata, experiment_metadata)
 
