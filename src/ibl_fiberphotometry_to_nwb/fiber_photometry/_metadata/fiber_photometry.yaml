@@ -1,0 +1,171 @@
+Ophys:
+  FiberPhotometry:
+    OpticalFiberModels:
+      - name: optical_fiber_model
+        description: Chronically implantable optic fiber.
+        manufacturer: <manufacturer of the optical fiber> # TODO add manufacturer
+        model_number: <model of the optical fiber> # TODO add model number
+        numerical_aperture: 0.0 # TODO add numerical aperture
+        core_diameter_in_um: 0.0 # TODO add core diameter
+        active_length_in_mm: 0.0 # TODO add active length
+        ferrule_diameter_in_mm: 0.0 # TODO add ferrule diameter
+        ferrule_name: <ferrule name of the optical fiber> # TODO add ferrule name
+    OpticalFibers:
+      - name: optical_fiber
+        description: Chronically implanted optic fiber.
+        model: optical_fiber_model
+        serial_number: <serial number of the optical fiber> # TODO add serial number
+        fiber_insertion:
+          insertion_position_ap_in_mm: 0.0 # TODO add AP position
+          insertion_position_ml_in_mm: 0.0 # TODO add ML position
+          insertion_position_dv_in_mm: 0.0 # TODO add DV position
+          position_reference: <reference point> # TODO add reference point for the fiber insertion coordinates
+          hemisphere: <hemisphere> # TODO add hemisphere
+    ExcitationSourceModels:
+      - name: excitation_source_model_calcium
+        description: excitation source for the sensor's fluorescence signal.
+        manufacturer: <manufacturer of the excitation source> # TODO add manufacturer
+        model_number: <model number of the excitation source> # TODO add model number
+        source_type: LED # TODO confirm source type
+        excitation_mode: one-photon
+        wavelength_range_in_nm: [460.0, 490.0] # TODO confirm wavelength range
+      - name: excitation_source_model_isosbestic
+        description: excitation source for the sensor's isosbestic control.
+        manufacturer: <manufacturer of the excitation source> # TODO add manufacturer
+        model_number: <model number of the excitation source> # TODO add model number
+        source_type: LED # TODO confirm source type
+        excitation_mode: one-photon
+        wavelength_range_in_nm: [400.0, 410.0] # TODO confirm wavelength range
+    ExcitationSources:
+      - name: excitation_source_calcium_signal
+        description: excitation source for the sensor's fluorescence signal (470nm).
+        model: excitation_source_model_calcium
+      - name: excitation_source_isosbestic_control
+        description: excitation source for the sensor's isosbestic control (415nm).
+        model: excitation_source_model_isosbestic
+    PhotodetectorModels:
+      - name: photodetector_model
+        description: <description of the photodetector model> # TODO add description
+        manufacturer: <manufacturer of the photodetector> # TODO add manufacturer
+        model_number: <model of the photodetector> # TODO add model number
+        detector_type: <type of the photodetector> # TODO confirm detector type
+        wavelength_range_in_nm: [500.0, 540.0] # TODO confirm wavelength range
+        gain: 0.0 # TODO add gain
+        gain_unit: n.a # TODO add gain unit
+    Photodetectors:
+      - name: photodetector
+        description: <description of the photodetector> # TODO add description
+        model: <photodetector_model> # TODO confirm photodetector model
+        serial_number: <serial number of the photodetector> # TODO add serial number
+    BandOpticalFilterModels:
+      - name: emission_filter_model
+        description: emission filter model for GCaMP fluorescence signal.
+        manufacturer: <manufacturer of the emission filter> # TODO add manufacturer
+        model_number: <model of the emission filter> # TODO add model number
+        filter_type: Bandpass
+        center_wavelength_in_nm: 520.0 #TODO confirm center wavelength
+        bandwidth_in_nm: 40.0
+      - name: excitation_filter_model
+        description: excitation filter model for GCaMP fluorescence signal.
+        manufacturer: <manufacturer of the excitation filter> # TODO add manufacturer
+        model_number: <model of the excitation filter> # TODO add model number
+        filter_type: Bandpass
+        center_wavelength_in_nm: 445.0 #TODO confirm center wavelength
+        bandwidth_in_nm: 90.0 #TODO confirm bandwidth
+    BandOpticalFilters:
+      - name: emission_filter
+        description: <description of emission filter> # TODO add description
+        model: emission_filter_model
+      - name: excitation_filter
+        description: <description of excitation filter> # TODO add description
+        model: excitation_filter_model
+    DichroicMirrorModels:
+      - name: dichroic_mirror_model
+        description: <description of the dichroic mirror model> # TODO add description
+        manufacturer: <manufacturer of the dichroic mirror> # TODO add manufacturer
+        model_number: <model of the dichroic mirror> # TODO add model number
+    DichroicMirrors:
+      - name: dichroic_mirror
+        description: <description of the dichroic mirror> # TODO add description
+        model: dichroic_mirror_model
+        serial_number: <serial number of the dichroic mirror> # TODO add serial number
+    FiberPhotometryViruses:
+      - name: viral_vector_GCaMP
+        description: <description of the viral vector for GCaMP> # TODO add description
+        manufacturer: <manufacturer of the viral vector> # TODO add manufacturer
+        construct_name: <construct name of the viral vector> # TODO add construct name
+        titer_in_vg_per_ml: 0.0 # TODO add titer
+    FiberPhotometryVirusInjections:
+      - name: viral_vector_injection
+        description: Viral injection of GCaMP in <location>. # TODO add description
+        viral_vector: viral_vector_GCaMP
+        location: <location of the viral injection> # TODO add location
+        hemisphere: <hemisphere of the viral injection> # TODO add hemisphere
+        reference: <reference for the viral injection> # TODO add reference for the viral injection
+        ap_in_mm: 0.0 # TODO add AP position of the viral injection
+        ml_in_mm: 0.0 # TODO add ML position of the viral injection
+        dv_in_mm: 0.0 # TODO add DV position of the viral injection
+        volume_in_uL: 0.0 # TODO add volume of the viral injection
+    FiberPhotometryIndicators:
+      - name: GCaMP
+        description: GCaMP calcium sensor in <location>.
+        manufacturer: <manufacturer of the GCaMP> # TODO add manufacturer
+        label: GCaMP
+        viral_vector_injection: viral_vector_injection
+    FiberPhotometryTable:
+      name: fiber_photometry_table
+      description: For monitoring calcium dynamics in <location>.
+      rows:
+        - name: 0
+          location: <location>
+          excitation_wavelength_in_nm: 470.0
+          emission_wavelength_in_nm: 515.0 # TODO confirm emission wavelength
+          indicator: GCaMP
+          optical_fiber: optical_fiber
+          excitation_source: excitation_source_calcium_signal
+          photodetector: photodetector
+          emission_filter: emission_filter
+          excitation_filter: excitation_filter
+          dichroic_mirror: dichroic_mirror
+        - name: 1
+          location: <location>
+          excitation_wavelength_in_nm: 415.0
+          emission_wavelength_in_nm: 515.0 # TODO confirm emission wavelength
+          indicator: GCaMP
+          optical_fiber: optical_fiber
+          excitation_source: excitation_source_isosbestic_control
+          photodetector: photodetector
+          emission_filter: emission_filter
+          excitation_filter: excitation_filter
+          dichroic_mirror: dichroic_mirror
+
+    FiberPhotometryResponseSeries:
+      - name: raw_calcium_signal
+        description: The raw fluorescence signal from GCaMP Ca2+ bound emission (calcium signal).
+        stream_name: G0 # TODO confirm stream name
+        target_area: <location>
+        unit: a.u.
+        fiber_photometry_table_region: [0]
+        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the raw calcium signal.
+      - name: raw_isosbestic_signal
+        description: The raw fluorescence signal from GCaMP Ca2+ independent emission (isosbestic signal).
+        stream_name: G1 # TODO confirm stream name
+        target_area: <location>
+        unit: a.u.
+        fiber_photometry_table_region: [1]
+        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the raw isosbestic signal.
+    ProcessedFiberPhotometryResponseSeries:
+      - name: processed_calcium_signal
+        description: The processed fluorescence signal from GCaMP Ca2+ bound emission (calcium signal).
+        stream_name: G0 # TODO confirm stream name
+        target_area: <location>
+        unit: a.u.
+        fiber_photometry_table_region: [0]
+        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the processed calcium signal.
+      - name: processed_isosbestic_signal
+        description: The processed fluorescence signal from GCaMP Ca2+ independent emission (isosbestic signal).
+        stream_name: G1 # TODO confirm stream name
+        target_area: <location>
+        unit: a.u.
+        fiber_photometry_table_region: [1]
+        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the processed isosbestic signal.

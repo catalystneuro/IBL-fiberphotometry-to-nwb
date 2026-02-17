@@ -27,9 +27,7 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.datainterfaces import (
     FiberPhotometryWheelPositionInterface,
 )
 from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
-    get_available_tasks,
     sanitize_subject_id_for_dandi,
-    setup_paths,
 )
 
 
