@@ -24,6 +24,8 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.datainterfaces import (
     FiberPhotometryWheelKinematicsInterface,
     FiberPhotometryWheelMovementsInterface,
     FiberPhotometryWheelPositionInterface,
+    ProcessedFiberPhotometryInterface,
+    RawFiberPhotometryInterface,
 )
 from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
     get_available_tasks,
@@ -92,6 +94,14 @@ def session_to_nwb(
     data_interfaces = dict()
     conversion_options = dict()
     interface_kwargs = dict(one=one, session=eid)
+
+    # Raw Fiber Photometry data
+    data_interfaces["RawFiberPhotometry"] = RawFiberPhotometryInterface(**interface_kwargs)
+    conversion_options.update({"RawFiberPhotometry": dict(stub_test=stub_test)})
+
+    # Processed Fiber Photometry data
+    data_interfaces["ProcessedFiberPhotometry"] = ProcessedFiberPhotometryInterface(**interface_kwargs)
+    conversion_options.update({"ProcessedFiberPhotometry": dict(stub_test=stub_test)})
 
     # Behavioral data
     data_interfaces["BrainwideMapTrials"] = BrainwideMapTrialsInterface(**interface_kwargs)

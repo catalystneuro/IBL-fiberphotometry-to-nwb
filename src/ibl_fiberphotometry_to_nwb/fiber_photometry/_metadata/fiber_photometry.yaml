@@ -55,7 +55,7 @@ Ophys:
     Photodetectors:
       - name: photodetector
         description: <description of the photodetector> # TODO add description
-        model: <photodetector_model> # TODO confirm photodetector model
+        model: photodetector_model
         serial_number: <serial number of the photodetector> # TODO add serial number
     BandOpticalFilterModels:
       - name: emission_filter_model
@@ -143,12 +143,14 @@ Ophys:
       - name: raw_calcium_signal
         description: The raw fluorescence signal from GCaMP Ca2+ bound emission (calcium signal).
         stream_name: G0 # TODO confirm stream name
+        led_state: 2
         target_area: <location>
         unit: a.u.
         fiber_photometry_table_region: [0]
         fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the raw calcium signal.
       - name: raw_isosbestic_signal
         description: The raw fluorescence signal from GCaMP Ca2+ independent emission (isosbestic signal).
+        led_state: 1
         stream_name: G1 # TODO confirm stream name
         target_area: <location>
         unit: a.u.
