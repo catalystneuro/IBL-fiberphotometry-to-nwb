@@ -4,9 +4,164 @@ from typing import Optional
 
 from ibl_to_nwb.datainterfaces._base_ibl_interface import BaseIBLDataInterface
 from neuroconv.tools.fiber_photometry import add_ophys_device, add_ophys_device_model
+from neuroconv.tools.nwb_helpers import get_module
 from neuroconv.utils import DeepDict, dict_deep_update, load_dict_from_file
 from one.api import ONE
 from pynwb import NWBFile
+
+
+def add_fiberphotometry_table(nwbfile: NWBFile, metadata: dict):
+    """Add fiber photometry devices to the NWB file based on the provided metadata."""
+    from ndx_fiber_photometry import (
+        FiberPhotometry,
+        FiberPhotometryIndicators,
+        FiberPhotometryTable,
+        FiberPhotometryViruses,
+        FiberPhotometryVirusInjections,
+    )
+    from ndx_ophys_devices import (
+        FiberInsertion,
+        Indicator,
+        OpticalFiber,
+        ViralVector,
+        ViralVectorInjection,
+    )
+
+    device_model_types = [
+        "OpticalFiberModel",
+        "ExcitationSourceModel",
+        "PhotodetectorModel",
+        "BandOpticalFilterModel",
+        "EdgeOpticalFilterModel",
+        "DichroicMirrorModel",
+    ]
+    for device_type in device_model_types:
+        device_models_metadata = metadata["Ophys"]["FiberPhotometry"].get(device_type + "s", [])
+        for devices_metadata in device_models_metadata:
+            add_ophys_device_model(
+                nwbfile=nwbfile,
+                device_metadata=devices_metadata,
+                device_type=device_type,
+            )
+    device_types = [
+        "ExcitationSource",
+        "Photodetector",
+        "BandOpticalFilter",
+        "EdgeOpticalFilter",
+        "DichroicMirror",
+    ]
+    for device_type in device_types:
+        devices_metadata = metadata["Ophys"]["FiberPhotometry"].get(device_type + "s", [])
+        for device_metadata in devices_metadata:
+            add_ophys_device(
+                nwbfile=nwbfile,
+                device_metadata=device_metadata,
+                device_type=device_type,
+            )
+    # Add Optical Fibers (special case bc they have additional FiberInsertion objects)
+    optical_fibers_metadata = metadata["Ophys"]["FiberPhotometry"].get("OpticalFibers", [])
+    for optical_fiber_metadata in optical_fibers_metadata:
+        fiber_insertion_metadata = optical_fiber_metadata["fiber_insertion"]
+        fiber_insertion = FiberInsertion(**fiber_insertion_metadata)
+        optical_fiber_metadata = deepcopy(optical_fiber_metadata)
+        optical_fiber_metadata["fiber_insertion"] = fiber_insertion
+        assert (
+            optical_fiber_metadata["model"] in nwbfile.device_models
+        ), f"Device model {optical_fiber_metadata['model']} not found in NWBFile device_models for {optical_fiber_metadata['name']}."
+        optical_fiber_metadata["model"] = nwbfile.device_models[optical_fiber_metadata["model"]]
+        optical_fiber = OpticalFiber(**optical_fiber_metadata)
+        # check if device already exists before adding to avoid duplicates
+        if optical_fiber.name not in nwbfile.devices:
+            nwbfile.add_device(optical_fiber)
+
+    # Add Viral Vectors, Injections, and Indicators
+    viral_vectors_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryViruses", [])
+    name_to_viral_vector = {}
+    for viral_vector_metadata in viral_vectors_metadata:
+        viral_vector = ViralVector(**viral_vector_metadata)
+        name_to_viral_vector[viral_vector.name] = viral_vector
+    if len(name_to_viral_vector) > 0:
+        viruses = FiberPhotometryViruses(viral_vectors=list(name_to_viral_vector.values()))
+    else:
+        viruses = None
+
+    viral_vector_injections_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryVirusInjections", [])
+    name_to_viral_vector_injection = {}
+    for viral_vector_injection_metadata in viral_vector_injections_metadata:
+        viral_vector = name_to_viral_vector[viral_vector_injection_metadata["viral_vector"]]
+        viral_vector_injection_metadata = deepcopy(viral_vector_injection_metadata)
+        viral_vector_injection_metadata["viral_vector"] = viral_vector
+        viral_vector_injection = ViralVectorInjection(**viral_vector_injection_metadata)
+        name_to_viral_vector_injection[viral_vector_injection.name] = viral_vector_injection
+    if len(name_to_viral_vector_injection) > 0:
+        virus_injections = FiberPhotometryVirusInjections(
+            viral_vector_injections=list(name_to_viral_vector_injection.values())
+        )
+    else:
+        virus_injections = None
+
+    indicators_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryIndicators", [])
+    name_to_indicator = {}
+    for indicator_metadata in indicators_metadata:
+        if "viral_vector_injection" in indicator_metadata:
+            viral_vector_injection = name_to_viral_vector_injection[indicator_metadata["viral_vector_injection"]]
+            indicator_metadata = deepcopy(indicator_metadata)
+            indicator_metadata["viral_vector_injection"] = viral_vector_injection
+        indicator = Indicator(**indicator_metadata)
+        name_to_indicator[indicator.name] = indicator
+    if len(name_to_indicator) > 0:
+        indicators = FiberPhotometryIndicators(indicators=list(name_to_indicator.values()))
+    else:
+        raise ValueError("At least one indicator must be specified in the metadata.")
+    # Fiber Photometry Table
+    fiber_photometry_table = FiberPhotometryTable(
+        name=metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["name"],
+        description=metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["description"],
+    )
+    required_fields = [
+        "location",
+        "excitation_wavelength_in_nm",
+        "emission_wavelength_in_nm",
+        "indicator",
+        "optical_fiber",
+        "excitation_source",
+        "photodetector",
+        "dichroic_mirror",
+    ]
+    device_fields = [
+        "optical_fiber",
+        "excitation_source",
+        "photodetector",
+        "dichroic_mirror",
+        "excitation_filter",
+        "emission_filter",
+    ]
+    for row_metadata in metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["rows"]:
+        for field in required_fields:
+            assert (
+                field in row_metadata
+            ), f"FiberPhotometryTable metadata row {row_metadata['name']} is missing required field {field}."
+        row_data = {field: nwbfile.devices[row_metadata[field]] for field in device_fields if field in row_metadata}
+        row_data["location"] = row_metadata["location"]
+        row_data["excitation_wavelength_in_nm"] = row_metadata["excitation_wavelength_in_nm"]
+        row_data["emission_wavelength_in_nm"] = row_metadata["emission_wavelength_in_nm"]
+        if "indicator" in row_metadata:
+            row_data["indicator"] = name_to_indicator[row_metadata["indicator"]]
+        if "coordinates" in row_metadata:
+            row_data["coordinates"] = row_metadata["coordinates"]
+        if "commanded_voltage_series" in row_metadata:
+            row_data["commanded_voltage_series"] = nwbfile.acquisition[row_metadata["commanded_voltage_series"]]
+        fiber_photometry_table.add_row(**row_data)
+    fiber_photometry_table_metadata = FiberPhotometry(
+        name="fiber_photometry",
+        fiber_photometry_table=fiber_photometry_table,
+        fiber_photometry_viruses=viruses,
+        fiber_photometry_virus_injections=virus_injections,
+        fiber_photometry_indicators=indicators,
+    )
+    nwbfile.add_lab_meta_data(fiber_photometry_table_metadata)
+
+    return fiber_photometry_table
 
 
 class RawFiberPhotometryInterface(BaseIBLDataInterface):
@@ -232,93 +387,11 @@ class RawFiberPhotometryInterface(BaseIBLDataInterface):
         else:
             stub_frames = None
 
-        # Add Devices
-        device_model_types = [
-            "OpticalFiberModel",
-            "ExcitationSourceModel",
-            "PhotodetectorModel",
-            "BandOpticalFilterModel",
-            "EdgeOpticalFilterModel",
-            "DichroicMirrorModel",
-        ]
-        for device_type in device_model_types:
-            device_models_metadata = metadata["Ophys"]["FiberPhotometry"].get(device_type + "s", [])
-            for devices_metadata in device_models_metadata:
-                add_ophys_device_model(
-                    nwbfile=nwbfile,
-                    device_metadata=devices_metadata,
-                    device_type=device_type,
-                )
-        device_types = [
-            "ExcitationSource",
-            "Photodetector",
-            "BandOpticalFilter",
-            "EdgeOpticalFilter",
-            "DichroicMirror",
-        ]
-        for device_type in device_types:
-            devices_metadata = metadata["Ophys"]["FiberPhotometry"].get(device_type + "s", [])
-            for device_metadata in devices_metadata:
-                add_ophys_device(
-                    nwbfile=nwbfile,
-                    device_metadata=device_metadata,
-                    device_type=device_type,
-                )
-        # Add Optical Fibers (special case bc they have additional FiberInsertion objects)
-        optical_fibers_metadata = metadata["Ophys"]["FiberPhotometry"].get("OpticalFibers", [])
-        for optical_fiber_metadata in optical_fibers_metadata:
-            fiber_insertion_metadata = optical_fiber_metadata["fiber_insertion"]
-            fiber_insertion = FiberInsertion(**fiber_insertion_metadata)
-            optical_fiber_metadata = deepcopy(optical_fiber_metadata)
-            optical_fiber_metadata["fiber_insertion"] = fiber_insertion
-            assert (
-                optical_fiber_metadata["model"] in nwbfile.device_models
-            ), f"Device model {optical_fiber_metadata['model']} not found in NWBFile device_models for {optical_fiber_metadata['name']}."
-            optical_fiber_metadata["model"] = nwbfile.device_models[optical_fiber_metadata["model"]]
-            optical_fiber = OpticalFiber(**optical_fiber_metadata)
-            nwbfile.add_device(optical_fiber)
-
-        # Add Viral Vectors, Injections, and Indicators
-        viral_vectors_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryViruses", [])
-        name_to_viral_vector = {}
-        for viral_vector_metadata in viral_vectors_metadata:
-            viral_vector = ViralVector(**viral_vector_metadata)
-            name_to_viral_vector[viral_vector.name] = viral_vector
-        if len(name_to_viral_vector) > 0:
-            viruses = FiberPhotometryViruses(viral_vectors=list(name_to_viral_vector.values()))
+        # Add Fiber Photometry metadata if not already added
+        if "fiber_photometry" not in nwbfile.lab_meta_data:
+            fiber_photometry_table = add_fiberphotometry_table(nwbfile=nwbfile, metadata=metadata)
         else:
-            viruses = None
-
-        viral_vector_injections_metadata = metadata["Ophys"]["FiberPhotometry"].get(
-            "FiberPhotometryVirusInjections", []
-        )
-        name_to_viral_vector_injection = {}
-        for viral_vector_injection_metadata in viral_vector_injections_metadata:
-            viral_vector = name_to_viral_vector[viral_vector_injection_metadata["viral_vector"]]
-            viral_vector_injection_metadata = deepcopy(viral_vector_injection_metadata)
-            viral_vector_injection_metadata["viral_vector"] = viral_vector
-            viral_vector_injection = ViralVectorInjection(**viral_vector_injection_metadata)
-            name_to_viral_vector_injection[viral_vector_injection.name] = viral_vector_injection
-        if len(name_to_viral_vector_injection) > 0:
-            virus_injections = FiberPhotometryVirusInjections(
-                viral_vector_injections=list(name_to_viral_vector_injection.values())
-            )
-        else:
-            virus_injections = None
-
-        indicators_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryIndicators", [])
-        name_to_indicator = {}
-        for indicator_metadata in indicators_metadata:
-            if "viral_vector_injection" in indicator_metadata:
-                viral_vector_injection = name_to_viral_vector_injection[indicator_metadata["viral_vector_injection"]]
-                indicator_metadata = deepcopy(indicator_metadata)
-                indicator_metadata["viral_vector_injection"] = viral_vector_injection
-            indicator = Indicator(**indicator_metadata)
-            name_to_indicator[indicator.name] = indicator
-        if len(name_to_indicator) > 0:
-            indicators = FiberPhotometryIndicators(indicators=list(name_to_indicator.values()))
-        else:
-            raise ValueError("At least one indicator must be specified in the metadata.")
+            fiber_photometry_table = nwbfile.lab_meta_data["fiber_photometry"].fiber_photometry_table
 
         # TODO is there a commanded voltage series to add?
         # Commanded Voltage Series
@@ -332,54 +405,6 @@ class RawFiberPhotometryInterface(BaseIBLDataInterface):
         #         **timing_kwargs,
         #     )
         #     nwbfile.add_acquisition(commanded_voltage_series)
-
-        # Fiber Photometry Table
-        fiber_photometry_table = FiberPhotometryTable(
-            name=metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["name"],
-            description=metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["description"],
-        )
-        required_fields = [
-            "location",
-            "excitation_wavelength_in_nm",
-            "emission_wavelength_in_nm",
-            "indicator",
-            "optical_fiber",
-            "excitation_source",
-            "photodetector",
-            "dichroic_mirror",
-        ]
-        device_fields = [
-            "optical_fiber",
-            "excitation_source",
-            "photodetector",
-            "dichroic_mirror",
-            "excitation_filter",
-            "emission_filter",
-        ]
-        for row_metadata in metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["rows"]:
-            for field in required_fields:
-                assert (
-                    field in row_metadata
-                ), f"FiberPhotometryTable metadata row {row_metadata['name']} is missing required field {field}."
-            row_data = {field: nwbfile.devices[row_metadata[field]] for field in device_fields if field in row_metadata}
-            row_data["location"] = row_metadata["location"]
-            row_data["excitation_wavelength_in_nm"] = row_metadata["excitation_wavelength_in_nm"]
-            row_data["emission_wavelength_in_nm"] = row_metadata["emission_wavelength_in_nm"]
-            if "indicator" in row_metadata:
-                row_data["indicator"] = name_to_indicator[row_metadata["indicator"]]
-            if "coordinates" in row_metadata:
-                row_data["coordinates"] = row_metadata["coordinates"]
-            if "commanded_voltage_series" in row_metadata:
-                row_data["commanded_voltage_series"] = nwbfile.acquisition[row_metadata["commanded_voltage_series"]]
-            fiber_photometry_table.add_row(**row_data)
-        fiber_photometry_table_metadata = FiberPhotometry(
-            name="fiber_photometry",
-            fiber_photometry_table=fiber_photometry_table,
-            fiber_photometry_viruses=viruses,
-            fiber_photometry_virus_injections=virus_injections,
-            fiber_photometry_indicators=indicators,
-        )
-        nwbfile.add_lab_meta_data(fiber_photometry_table_metadata)
 
         # Fiber Photometry Response Series
         all_series_metadata = metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryResponseSeries"]
@@ -608,19 +633,7 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
         """
         from ndx_fiber_photometry import (
             CommandedVoltageSeries,
-            FiberPhotometry,
-            FiberPhotometryIndicators,
             FiberPhotometryResponseSeries,
-            FiberPhotometryTable,
-            FiberPhotometryViruses,
-            FiberPhotometryVirusInjections,
-        )
-        from ndx_ophys_devices import (
-            FiberInsertion,
-            Indicator,
-            OpticalFiber,
-            ViralVector,
-            ViralVectorInjection,
         )
 
         processed_fp_data = self.one.load_object(self.session, **self.get_load_object_kwargs())
@@ -629,96 +642,6 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
             stub_frames = 1000  # TODO add stubbing interval
         else:
             stub_frames = None
-
-        # Add Devices
-        device_model_types = [
-            "OpticalFiberModel",
-            "ExcitationSourceModel",
-            "PhotodetectorModel",
-            "BandOpticalFilterModel",
-            "EdgeOpticalFilterModel",
-            "DichroicMirrorModel",
-        ]
-        for device_type in device_model_types:
-            device_models_metadata = metadata["Ophys"]["FiberPhotometry"].get(device_type + "s", [])
-            for devices_metadata in device_models_metadata:
-                add_ophys_device_model(
-                    nwbfile=nwbfile,
-                    device_metadata=devices_metadata,
-                    device_type=device_type,
-                )
-        device_types = [
-            "ExcitationSource",
-            "Photodetector",
-            "BandOpticalFilter",
-            "EdgeOpticalFilter",
-            "DichroicMirror",
-        ]
-        for device_type in device_types:
-            devices_metadata = metadata["Ophys"]["FiberPhotometry"].get(device_type + "s", [])
-            for device_metadata in devices_metadata:
-                add_ophys_device(
-                    nwbfile=nwbfile,
-                    device_metadata=device_metadata,
-                    device_type=device_type,
-                )
-        # Add Optical Fibers (special case bc they have additional FiberInsertion objects)
-        optical_fibers_metadata = metadata["Ophys"]["FiberPhotometry"].get("OpticalFibers", [])
-        for optical_fiber_metadata in optical_fibers_metadata:
-            fiber_insertion_metadata = optical_fiber_metadata["fiber_insertion"]
-            fiber_insertion = FiberInsertion(**fiber_insertion_metadata)
-            optical_fiber_metadata = deepcopy(optical_fiber_metadata)
-            optical_fiber_metadata["fiber_insertion"] = fiber_insertion
-            assert (
-                optical_fiber_metadata["model"] in nwbfile.device_models
-            ), f"Device model {optical_fiber_metadata['model']} not found in NWBFile device_models for {optical_fiber_metadata['name']}."
-            optical_fiber_metadata["model"] = nwbfile.device_models[optical_fiber_metadata["model"]]
-            optical_fiber = OpticalFiber(**optical_fiber_metadata)
-            # check if device already exists before adding to avoid duplicates
-            if optical_fiber.name not in nwbfile.devices:
-                nwbfile.add_device(optical_fiber)
-
-        # Add Viral Vectors, Injections, and Indicators
-        viral_vectors_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryViruses", [])
-        name_to_viral_vector = {}
-        for viral_vector_metadata in viral_vectors_metadata:
-            viral_vector = ViralVector(**viral_vector_metadata)
-            name_to_viral_vector[viral_vector.name] = viral_vector
-        if len(name_to_viral_vector) > 0:
-            viruses = FiberPhotometryViruses(viral_vectors=list(name_to_viral_vector.values()))
-        else:
-            viruses = None
-
-        viral_vector_injections_metadata = metadata["Ophys"]["FiberPhotometry"].get(
-            "FiberPhotometryVirusInjections", []
-        )
-        name_to_viral_vector_injection = {}
-        for viral_vector_injection_metadata in viral_vector_injections_metadata:
-            viral_vector = name_to_viral_vector[viral_vector_injection_metadata["viral_vector"]]
-            viral_vector_injection_metadata = deepcopy(viral_vector_injection_metadata)
-            viral_vector_injection_metadata["viral_vector"] = viral_vector
-            viral_vector_injection = ViralVectorInjection(**viral_vector_injection_metadata)
-            name_to_viral_vector_injection[viral_vector_injection.name] = viral_vector_injection
-        if len(name_to_viral_vector_injection) > 0:
-            virus_injections = FiberPhotometryVirusInjections(
-                viral_vector_injections=list(name_to_viral_vector_injection.values())
-            )
-        else:
-            virus_injections = None
-
-        indicators_metadata = metadata["Ophys"]["FiberPhotometry"].get("FiberPhotometryIndicators", [])
-        name_to_indicator = {}
-        for indicator_metadata in indicators_metadata:
-            if "viral_vector_injection" in indicator_metadata:
-                viral_vector_injection = name_to_viral_vector_injection[indicator_metadata["viral_vector_injection"]]
-                indicator_metadata = deepcopy(indicator_metadata)
-                indicator_metadata["viral_vector_injection"] = viral_vector_injection
-            indicator = Indicator(**indicator_metadata)
-            name_to_indicator[indicator.name] = indicator
-        if len(name_to_indicator) > 0:
-            indicators = FiberPhotometryIndicators(indicators=list(name_to_indicator.values()))
-        else:
-            raise ValueError("At least one indicator must be specified in the metadata.")
 
         # TODO is there a commanded voltage series to add?
         # Commanded Voltage Series
@@ -733,58 +656,15 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
         #     )
         #     nwbfile.add_acquisition(commanded_voltage_series)
 
-        # Fiber Photometry Table
-        fiber_photometry_table = FiberPhotometryTable(
-            name=metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["name"],
-            description=metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["description"],
-        )
-        required_fields = [
-            "location",
-            "excitation_wavelength_in_nm",
-            "emission_wavelength_in_nm",
-            "indicator",
-            "optical_fiber",
-            "excitation_source",
-            "photodetector",
-            "dichroic_mirror",
-        ]
-        device_fields = [
-            "optical_fiber",
-            "excitation_source",
-            "photodetector",
-            "dichroic_mirror",
-            "excitation_filter",
-            "emission_filter",
-        ]
-        for row_metadata in metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryTable"]["rows"]:
-            for field in required_fields:
-                assert (
-                    field in row_metadata
-                ), f"FiberPhotometryTable metadata row {row_metadata['name']} is missing required field {field}."
-            row_data = {field: nwbfile.devices[row_metadata[field]] for field in device_fields if field in row_metadata}
-            row_data["location"] = row_metadata["location"]
-            row_data["excitation_wavelength_in_nm"] = row_metadata["excitation_wavelength_in_nm"]
-            row_data["emission_wavelength_in_nm"] = row_metadata["emission_wavelength_in_nm"]
-            if "indicator" in row_metadata:
-                row_data["indicator"] = name_to_indicator[row_metadata["indicator"]]
-            if "coordinates" in row_metadata:
-                row_data["coordinates"] = row_metadata["coordinates"]
-            if "commanded_voltage_series" in row_metadata:
-                row_data["commanded_voltage_series"] = nwbfile.acquisition[row_metadata["commanded_voltage_series"]]
-            fiber_photometry_table.add_row(**row_data)
-        fiber_photometry_table_metadata = FiberPhotometry(
-            name="fiber_photometry",
-            fiber_photometry_table=fiber_photometry_table,
-            fiber_photometry_viruses=viruses,
-            fiber_photometry_virus_injections=virus_injections,
-            fiber_photometry_indicators=indicators,
-        )
-        # check if metadata already exists before adding to avoid duplicates
+        # Add Fiber Photometry metadata if not already added
         if "fiber_photometry" not in nwbfile.lab_meta_data:
-            nwbfile.add_lab_meta_data(fiber_photometry_table_metadata)
-
+            fiber_photometry_table = add_fiberphotometry_table(nwbfile=nwbfile, metadata=metadata)
+        else:
+            fiber_photometry_table = nwbfile.lab_meta_data["fiber_photometry"].fiber_photometry_table
         # Fiber Photometry Response Series
         all_series_metadata = metadata["Ophys"]["FiberPhotometry"]["ProcessedFiberPhotometryResponseSeries"]
+        ophys_module = get_module(nwbfile=nwbfile, name="ophys", description="Processed fiber photometry signals")
+
         for fiber_photometry_response_series_metadata in all_series_metadata:
 
             fiber_photometry_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
@@ -792,15 +672,13 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
                 region=fiber_photometry_response_series_metadata["fiber_photometry_table_region"],
             )
             stream_name = fiber_photometry_response_series_metadata["stream_name"]
-            wavelength = fiber_photometry_table[fiber_photometry_table_region[0]].excitation_wavelength_in_nm
+            wavelength = fiber_photometry_table[fiber_photometry_table_region.data][
+                "excitation_wavelength_in_nm"
+            ].to_numpy()[0]
             # Get the data
-            data = processed_fp_data.signal[stream_name][
-                processed_fp_data.signal[stream_name]["wavelength"] == wavelength
-            ]
+            data = processed_fp_data.signal[stream_name][processed_fp_data.signal["wavelength"] == wavelength]
             data = data[:stub_frames].to_numpy()
-            timestamps = processed_fp_data.signal[stream_name]["times"][
-                processed_fp_data.signal[stream_name]["wavelength"] == wavelength
-            ]
+            timestamps = processed_fp_data.signal["times"][processed_fp_data.signal["wavelength"] == wavelength]
             timestamps = timestamps[:stub_frames].to_numpy()
 
             fiber_photometry_response_series = FiberPhotometryResponseSeries(
@@ -811,4 +689,4 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
                 fiber_photometry_table_region=fiber_photometry_table_region,
                 timestamps=timestamps,
             )
-            nwbfile.add_acquisition(fiber_photometry_response_series)
+            ophys_module.add(fiber_photometry_response_series)
