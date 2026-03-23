@@ -15,6 +15,17 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
 
 
 class IblConverter(ConverterPipe):
+    """
+    Base NWB converter for IBL data that enriches metadata from the ONE API.
+
+    Extends :class:`neuroconv.ConverterPipe` to automatically populate NWB
+    metadata (session start time, lab, institution, task protocol description,
+    and subject information) by querying Alyx via the ONE API.
+
+    Subclass this converter for specific IBL recording modalities and override
+    :meth:`get_metadata` to merge modality-specific metadata on top of the
+    session-level fields populated here.
+    """
 
     def __init__(
         self,
@@ -23,11 +34,35 @@ class IblConverter(ConverterPipe):
         data_interfaces: list[BaseDataInterface] | dict[str, BaseDataInterface],
         verbose=False,
     ) -> Self:
+        """
+        Parameters
+        ----------
+        one : ONE
+            ONE API instance connected to Alyx.
+        session : str
+            Session UUID (experiment ID, ``eid``).
+        data_interfaces : list[BaseDataInterface] | dict[str, BaseDataInterface]
+            Data interfaces to include in the conversion pipeline.
+        verbose : bool, optional
+            Whether to print verbose output during conversion, by default False.
+        """
         self.one = one
         self.session = session
         super().__init__(data_interfaces=data_interfaces, verbose=verbose)
 
     def get_metadata_schema(self) -> dict:
+        """
+        Return the metadata schema with relaxed validation.
+
+        Enables ``additionalProperties`` on the top-level schema and on the
+        ``Subject`` block so that IBL-specific extensions (e.g. ``IblSubject``)
+        can pass extra fields without validation errors.
+
+        Returns
+        -------
+        dict
+            JSON-Schema compatible metadata schema dictionary.
+        """
         metadata_schema = super().get_metadata_schema()
         metadata_schema["additionalProperties"] = True
         metadata_schema["properties"]["Subject"]["additionalProperties"] = True
@@ -35,6 +70,25 @@ class IblConverter(ConverterPipe):
         return metadata_schema
 
     def get_metadata(self) -> dict:
+        """
+        Aggregate metadata from data interfaces and the ONE / Alyx API.
+
+        Fetches session and lab records from Alyx to populate:
+
+        - ``NWBFile.session_start_time`` — timezone-aware datetime derived from
+          the Alyx session record and the lab's configured timezone.
+        - ``NWBFile.session_id`` — the session UUID (``eid``).
+        - ``NWBFile.lab`` and ``NWBFile.institution`` — from the Alyx lab record.
+        - ``NWBFile.protocol`` and ``NWBFile.session_description`` — derived from
+          the task protocol string via :data:`PROTOCOLS_MAPPING`.
+        - ``Subject`` block — species, date of birth, sex, weight, and other
+          fields from :func:`~ibl_fiberphotometry_to_nwb.fiber_photometry.utils.get_ibl_subject_metadata`.
+
+        Returns
+        -------
+        dict
+            Merged metadata dictionary ready for NWB file creation.
+        """
         metadata = super().get_metadata()  # Aggregates from the interfaces
 
         (session_metadata,) = self.one.alyx.rest(url="sessions", action="list", id=self.session)
@@ -71,9 +125,29 @@ class IblConverter(ConverterPipe):
 
 
 class FiberPhotometryNWBConverter(IblConverter):
-    """Primary conversion class for raw IBL fiber photometry datasets."""
+    """
+    Primary NWB converter for IBL fiber photometry datasets.
+
+    Combines all data interfaces for a fiber photometry session (fiber
+    photometry signals, anatomical localization, wheel, behavioral, and
+    camera data) and merges session-level metadata from the ONE API with
+    experiment-level metadata from ``general_metadata.yaml``.
+    """
 
     def get_metadata(self) -> dict:
+        """
+        Aggregate session metadata and merge with experiment-level metadata.
+
+        Calls the parent :meth:`IblConverter.get_metadata` to populate session,
+        lab, subject, and protocol fields, then deep-merges with the contents
+        of ``_metadata/general_metadata.yaml`` which provides NWB keywords and
+        the experiment description common to all sessions in this dataset.
+
+        Returns
+        -------
+        dict
+            Fully merged metadata dictionary for NWB file creation.
+        """
         metadata = super().get_metadata()
 
         fiber_photometry_metadata_file_path = Path(__file__).parent / "_metadata" / "general_metadata.yaml"

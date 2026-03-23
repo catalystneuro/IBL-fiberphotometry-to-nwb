@@ -12,12 +12,43 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import get_available_task
 
 
 class FiberPhotometryWheelKinematicsInterface(WheelKinematicsInterface):
-    """Interface for wheel kinematics data."""
+    """
+    Data interface for wheel kinematics data in IBL fiber photometry sessions.
+
+    Extends :class:`ibl_to_nwb.datainterfaces.WheelKinematicsInterface` to
+    support task-specific ALF collections (e.g. ``alf/task_00/``) used in
+    fiber photometry sessions where multiple tasks may be recorded per session.
+
+    Derives wheel velocity and acceleration from the raw wheel position and
+    timestamp files. Uses revision ``"2025-05-06"`` (the BWM standard).
+
+    Required files (either the ``standard`` or the task-specific option):
+
+    - ``alf/_ibl_wheel.position.npy`` / ``alf/{task}/_ibl_wheel.position.npy``
+    - ``alf/_ibl_wheel.timestamps.npy`` / ``alf/{task}/_ibl_wheel.timestamps.npy``
+    """
 
     # Wheel data uses BWM standard revision
     REVISION: str | None = "2025-05-06"
 
     def __init__(self, one: ONE, session: str, task: str = "task_00"):
+        """
+        Parameters
+        ----------
+        one : ONE
+            ONE API instance connected to Alyx.
+        session : str
+            Session UUID (experiment ID, ``eid``).
+        task : str, optional
+            Task name to load wheel data from (e.g. ``"task_00"``),
+            by default ``"task_00"``. Must be one of the tasks returned by
+            :func:`~ibl_fiberphotometry_to_nwb.fiber_photometry.utils.get_available_tasks`.
+
+        Raises
+        ------
+        ValueError
+            If ``task`` is not found among the available tasks for this session.
+        """
         self.one = one
         self.session = session
         self.revision = self.REVISION
@@ -32,12 +63,19 @@ class FiberPhotometryWheelKinematicsInterface(WheelKinematicsInterface):
         """
         Declare exact data files required for wheel kinematics.
 
-        Note: This interface derives kinematics from the raw wheel position data.
+        Supports two options: a ``"standard"`` collection (``alf/``) and a
+        task-specific collection (``alf/{task}/``). Either complete option
+        satisfies the availability check.
+
+        Parameters
+        ----------
+        task : str
+            Task name used to build the task-specific file paths.
 
         Returns
         -------
         dict
-            Data requirements with exact file paths
+            Data requirements mapping with ``exact_files_options``.
         """
         return {
             "exact_files_options": {
@@ -180,12 +218,38 @@ class FiberPhotometryWheelKinematicsInterface(WheelKinematicsInterface):
 
 
 class FiberPhotometryWheelMovementsInterface(WheelMovementsInterface):
-    """Interface for wheel movement data."""
+    """
+    Data interface for wheel movement segmentation data in IBL fiber photometry sessions.
+
+    Extends :class:`ibl_to_nwb.datainterfaces.WheelMovementsInterface` to
+    support task-specific ALF collections (e.g. ``alf/task_00/``) used in
+    fiber photometry sessions where multiple tasks may be recorded per session.
+
+    Loads pre-computed movement intervals and peak amplitudes from the ALF
+    ``wheelMoves`` object. Uses revision ``"2025-05-06"`` (the BWM standard).
+
+    Required files (either the ``standard`` or the task-specific option):
+
+    - ``alf/_ibl_wheelMoves.intervals.npy`` / ``alf/{task}/_ibl_wheelMoves.intervals.npy``
+    - ``alf/_ibl_wheelMoves.peakAmplitude.npy`` / ``alf/{task}/_ibl_wheelMoves.peakAmplitude.npy``
+    """
 
     # Wheel data uses BWM standard revision
     REVISION: str | None = "2025-05-06"
 
     def __init__(self, one: ONE, session: str, task: str = "task_00"):
+        """
+        Parameters
+        ----------
+        one : ONE
+            ONE API instance connected to Alyx.
+        session : str
+            Session UUID (experiment ID, ``eid``).
+        task : str, optional
+            Task name to load wheel movement data from (e.g. ``"task_00"``),
+            by default ``"task_00"``. Issues a warning if the task is not found
+            (does not raise, to allow graceful degradation in batch conversions).
+        """
         self.one = one
         self.session = session
         self.revision = self.REVISION
@@ -198,14 +262,21 @@ class FiberPhotometryWheelMovementsInterface(WheelMovementsInterface):
     @classmethod
     def get_data_requirements(cls, task: str) -> dict:
         """
-        Declare exact data files required for wheel kinematics.
+        Declare exact data files required for wheel movement segmentation.
 
-        Note: This interface derives kinematics from the raw wheel position data.
+        Supports two options: a ``"standard"`` collection (``alf/``) and a
+        task-specific collection (``alf/{task}/``). Either complete option
+        satisfies the availability check.
+
+        Parameters
+        ----------
+        task : str
+            Task name used to build the task-specific file paths.
 
         Returns
         -------
         dict
-            Data requirements with exact file paths
+            Data requirements mapping with ``exact_files_options``.
         """
         return {
             "exact_files_options": {
@@ -348,12 +419,38 @@ class FiberPhotometryWheelMovementsInterface(WheelMovementsInterface):
 
 
 class FiberPhotometryWheelPositionInterface(WheelPositionInterface):
-    """Interface for wheel position data."""
+    """
+    Data interface for raw wheel position data in IBL fiber photometry sessions.
+
+    Extends :class:`ibl_to_nwb.datainterfaces.WheelPositionInterface` to
+    support task-specific ALF collections (e.g. ``alf/task_00/``) used in
+    fiber photometry sessions where multiple tasks may be recorded per session.
+
+    Loads the raw wheel position and timestamp arrays from the ALF ``wheel``
+    object. Uses revision ``"2025-05-06"`` (the BWM standard).
+
+    Required files (either the ``standard`` or the task-specific option):
+
+    - ``alf/_ibl_wheel.position.npy`` / ``alf/{task}/_ibl_wheel.position.npy``
+    - ``alf/_ibl_wheel.timestamps.npy`` / ``alf/{task}/_ibl_wheel.timestamps.npy``
+    """
 
     # Wheel data uses BWM standard revision
     REVISION: str | None = "2025-05-06"
 
     def __init__(self, one: ONE, session: str, task: str = "task_00"):
+        """
+        Parameters
+        ----------
+        one : ONE
+            ONE API instance connected to Alyx.
+        session : str
+            Session UUID (experiment ID, ``eid``).
+        task : str, optional
+            Task name to load wheel position data from (e.g. ``"task_00"``),
+            by default ``"task_00"``. Issues a warning if the task is not found
+            (does not raise, to allow graceful degradation in batch conversions).
+        """
         self.one = one
         self.session = session
         self.revision = self.REVISION
@@ -366,14 +463,21 @@ class FiberPhotometryWheelPositionInterface(WheelPositionInterface):
     @classmethod
     def get_data_requirements(cls, task: str) -> dict:
         """
-        Declare exact data files required for wheel kinematics.
+        Declare exact data files required for wheel position.
 
-        Note: This interface derives kinematics from the raw wheel position data.
+        Supports two options: a ``"standard"`` collection (``alf/``) and a
+        task-specific collection (``alf/{task}/``). Either complete option
+        satisfies the availability check.
+
+        Parameters
+        ----------
+        task : str
+            Task name used to build the task-specific file paths.
 
         Returns
         -------
         dict
-            Data requirements with exact file paths
+            Data requirements mapping with ``exact_files_options``.
         """
         return {
             "exact_files_options": {
