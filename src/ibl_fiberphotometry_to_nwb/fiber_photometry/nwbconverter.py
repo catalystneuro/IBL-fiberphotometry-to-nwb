@@ -8,7 +8,10 @@ from neuroconv.utils import dict_deep_update, load_dict_from_file
 from one.api import ONE
 from typing_extensions import Self
 
-from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import get_ibl_subject_metadata
+from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
+    get_ibl_subject_metadata,
+    get_protocol_type_and_description,
+)
 
 
 class IblConverter(ConverterPipe):
@@ -47,7 +50,16 @@ class IblConverter(ConverterPipe):
         metadata["NWBFile"]["lab"] = session_metadata["lab"].replace("lab", "").capitalize()
         metadata["NWBFile"]["institution"] = lab_metadata["institution"]
         if session_metadata.get("task_protocol"):
-            metadata["NWBFile"]["protocol"] = session_metadata["task_protocol"]
+            task_protocol = session_metadata["task_protocol"]
+            metadata["NWBFile"]["protocol"] = task_protocol
+            session_description = f"The task protocol(s) performed in this experimental session:\n"
+            # Determine protocol type and description from the mapping
+            protocols = task_protocol.split("/")  # In case there are multiple protocols listed, separated by /
+            for i, protocol in enumerate(protocols):
+                protocol_type, protocol_description = get_protocol_type_and_description(protocol)
+                if protocol_type is not None:
+                    session_description = session_description + f"{i+1}. {protocol_description}\n"
+            metadata["NWBFile"]["session_description"] = session_description
         # Setting publication and experiment description at project-specific converter level
         subject_metadata_block = get_ibl_subject_metadata(
             one=self.one, session_metadata=session_metadata, tzinfo=tzinfo

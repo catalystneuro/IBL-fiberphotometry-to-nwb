@@ -235,7 +235,7 @@ def session_to_nwb(
     metadata = converter.get_metadata()
 
     # Update default metadata with the editable in the corresponding yaml file
-    editable_metadata_path = Path(__file__).parent.parent / "_metadata" / "general_metadata.yaml"
+    editable_metadata_path = Path(__file__).parent / "_metadata" / "general_metadata.yaml"
     editable_metadata = load_dict_from_file(editable_metadata_path)
     metadata = dict_deep_update(metadata, editable_metadata)
 
@@ -295,7 +295,7 @@ if __name__ == "__main__":
 
     # Parameters for conversion
     eid = "fd688232-0dd8-400b-aa66-dc23460d9f98"
-    stub_test = True  # Set to True for a quick test conversion with limited data
+    stub_test = False  # Set to True for a quick test conversion with limited data
     start_time = time.time()
     session_to_nwb(
         eid=eid,
