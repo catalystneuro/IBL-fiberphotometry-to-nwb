@@ -2,6 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
+from brainbox.io.one import PhotometrySessionLoader
 from ibl_to_nwb.datainterfaces._base_ibl_interface import BaseIBLDataInterface
 from neuroconv.tools.fiber_photometry import add_ophys_device, add_ophys_device_model
 from neuroconv.tools.nwb_helpers import get_module
@@ -164,286 +165,19 @@ def add_fiberphotometry_table(nwbfile: NWBFile, metadata: dict):
     return fiber_photometry_table
 
 
-class RawFiberPhotometryInterface(BaseIBLDataInterface):
-    """An interface for raw IBL fiber photometry signals."""
+class FiberPhotometryInterface(BaseIBLDataInterface):
+    """An interface for IBL fiber photometry signals."""
 
-    interface_name = "RawFiberPhotometryInterface"
+    interface_name = "FiberPhotometryInterface"
     REVISION: str | None = None
 
     def __init__(self, one: ONE, session: str):
         self.one = one
         self.session = session
         self.revision = self.REVISION
-
-    @classmethod
-    def get_data_requirements(cls) -> dict:
-        """
-        Declare exact data files required for raw fiber photometry signals.
-
-        Note: This interface derives raw fiber photometry signals from specific files.
-
-        Returns
-        -------
-        dict
-            Data requirements with exact file paths
-        """
-        return {
-            "exact_files_options": {
-                "standard": [
-                    "raw_photometry_data/_neurophotometrics_fpData.channels.csv",
-                    "raw_photometry_data/_neurophotometrics_fpData.digitalInputs.pqt",
-                    "raw_photometry_data/_neurophotometrics_fpData.raw.pqt",
-                ]
-            },
-        }
-
-    @classmethod
-    def get_load_object_kwargs(cls) -> dict:
-        """Return kwargs for one.load_object() call."""
-        return {"obj": "fpData", "collection": "raw_photometry_data"}
-
-    @classmethod
-    def check_availability(cls, one: ONE, eid: str, **kwargs) -> dict:
-        """
-        Check if required data is available for a specific session.
-
-        This method NEVER downloads data - it only checks if files exist
-        using one.list_datasets(). It's designed to be fast and read-only,
-        suitable for scanning many sessions.
-
-        NO try-except patterns that hide failures. If checking fails,
-        let the exception propagate.
-
-        NOTE: Does NOT use revision filtering in check_availability(). Queries for latest
-        version of all files regardless of revision tags. This matches the smart fallback
-        behavior of load_object() and download methods, which try requested revision first
-        but fall back to latest if not found.
-
-        Parameters
-        ----------
-        one : ONE
-            ONE API instance
-        eid : str
-            Session ID (experiment ID)
-        **kwargs : dict
-            Interface-specific parameters
-
-        Returns
-        -------
-        dict
-            {
-                "available": bool,              # Overall availability
-                "missing_required": [str],      # Missing required files
-                "found_files": [str],           # Files that exist
-                "alternative_used": str,        # Which alternative was found (if applicable)
-                "requirements": dict,           # Copy of get_data_requirements()
-            }
-
-        Examples
-        --------
-        >>> result = WheelInterface.check_availability(one, eid)
-        >>> if not result["available"]:
-        >>>     print(f"Missing: {result['missing_required']}")
-        """
-        # STEP 1: Check quality (QC filtering)
-        quality_result = cls.check_quality(one=one, eid=eid, **kwargs)
-
-        if quality_result is not None:
-            # If quality check explicitly rejects, return immediately
-            if quality_result.get("available") is False:
-                return quality_result
-            # Otherwise, save extra fields to merge later
-            extra_fields = quality_result
-        else:
-            extra_fields = {}
-
-        # STEP 2: Check file existence
-        requirements = cls.get_data_requirements(**kwargs)
-
-        # Query without revision filtering to get latest version of ALL files
-        # This includes both revision-tagged files (spike sorting) and untagged files (behavioral)
-        # The unfiltered query returns the superset of what any revision-specific query would return
-        available_datasets = one.list_datasets(eid)
-        available_files = set(str(d) for d in available_datasets)
-
-        missing_required = []
-        found_files = []
-        alternative_used = None
-
-        # Check file options - this is now REQUIRED (not optional)
-        # Every interface must define exact_files_options dict
-        exact_files_options = requirements.get("exact_files_options", {})
-
-        if not exact_files_options:
-            raise ValueError(
-                f"{cls.__name__}.get_data_requirements() must return 'exact_files_options' dict. "
-                f"Even for single-format interfaces, use: {{'standard': ['file1.npy', 'file2.npy']}}"
-            )
-
-        # Check each named option - ANY complete option = available
-        for option_name, option_files in exact_files_options.items():
-            all_files_found = True
-
-            for exact_file in option_files:
-                # Handle wildcards
-                if "*" in exact_file:
-                    import re
-
-                    pattern = re.escape(exact_file).replace(r"\*", ".*")
-                    found = any(re.search(pattern, avail) for avail in available_files)
-                else:
-                    found = any(exact_file in avail for avail in available_files)
-
-                if not found:
-                    all_files_found = False
-                    break  # This option is incomplete
-
-            # If this option has all files, mark as available
-            if all_files_found:
-                found_files.extend(option_files)
-                alternative_used = option_name  # Report which option was found
-                break  # Found one complete option, that's enough
-
-        # If no options were complete, mark the first option as missing for reporting
-        if not alternative_used:
-            first_option_name = next(iter(exact_files_options.keys()))
-            missing_required.extend(exact_files_options[first_option_name])
-
-        # STEP 3: Build result and merge extra fields from quality check
-        result = {
-            "available": len(missing_required) == 0,
-            "missing_required": missing_required,
-            "found_files": found_files,
-            "alternative_used": alternative_used,
-            "requirements": requirements,
-        }
-        result.update(extra_fields)
-
-        return result
-
-    def get_metadata(self) -> DeepDict:
-        """
-        Get metadata for the Meso segmentation data.
-
-        Returns
-        -------
-        DeepDict
-            Dictionary containing metadata including plane segmentation details,
-            fluorescence data, and segmentation images.
-        """
-        metadata = super().get_metadata()
-        metadata_copy = deepcopy(metadata)  # To avoid modifying the parent class's metadata
-
-        # Use single source of truth when updating metadata
-        fp_metadata = load_dict_from_file(
-            file_path=Path(__file__).parent.parent / "_metadata" / "fiber_photometry.yaml"
-        )
-
-        # Create Device entry
-        metadata_copy = dict_deep_update(metadata_copy, fp_metadata)
-        return metadata_copy
-
-    def add_to_nwbfile(
-        self,
-        nwbfile: NWBFile,
-        metadata: Optional[dict] = None,
-        *,
-        stub_test: bool = False,
-    ):
-        """
-        Add raw fiber photometry data to the NWB file.
-
-        This method ONLY adds raw fiber photometry data to the NWB file.
-
-        Parameters
-        ----------
-        nwbfile : NWBFile
-            The NWB file to add data to
-        metadata : dict, optional
-            Metadata dictionary (not currently used)
-        """
-        from ndx_fiber_photometry import (
-            CommandedVoltageSeries,
-            FiberPhotometry,
-            FiberPhotometryIndicators,
-            FiberPhotometryResponseSeries,
-            FiberPhotometryTable,
-            FiberPhotometryViruses,
-            FiberPhotometryVirusInjections,
-        )
-        from ndx_ophys_devices import (
-            FiberInsertion,
-            Indicator,
-            OpticalFiber,
-            ViralVector,
-            ViralVectorInjection,
-        )
-
-        raw_fp_data = self.one.load_object(self.session, **self.get_load_object_kwargs())
-
-        # Load Data
-        if stub_test:
-            stub_frames = 1000  # TODO add stubbing interval
-        else:
-            stub_frames = None
-
-        # Add Fiber Photometry metadata if not already added
-        if "fiber_photometry" not in nwbfile.lab_meta_data:
-            fiber_photometry_table = add_fiberphotometry_table(nwbfile=nwbfile, metadata=metadata)
-        else:
-            fiber_photometry_table = nwbfile.lab_meta_data["fiber_photometry"].fiber_photometry_table
-
-        # TODO is there a commanded voltage series to add?
-        # Commanded Voltage Series
-        # for commanded_voltage_series_metadata in metadata["Ophys"]["FiberPhotometry"].get("CommandedVoltageSeries", []):
-        #     commanded_voltage_series = CommandedVoltageSeries(
-        #         name=commanded_voltage_series_metadata["name"],
-        #         description=commanded_voltage_series_metadata["description"],
-        #         data=data,
-        #         unit=commanded_voltage_series_metadata["unit"],
-        #         frequency=commanded_voltage_series_metadata["frequency"],
-        #         **timing_kwargs,
-        #     )
-        #     nwbfile.add_acquisition(commanded_voltage_series)
-
-        # Fiber Photometry Response Series
-        all_series_metadata = metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryResponseSeries"]
-        for fiber_photometry_response_series_metadata in all_series_metadata:
-            # TODO add function to select the correct LedState for now I'm hardcoding it in the metadata
-            stream_name = fiber_photometry_response_series_metadata["stream_name"]
-            led_state = fiber_photometry_response_series_metadata["led_state"]
-            # Get the data
-            data = raw_fp_data["raw"][stream_name][raw_fp_data["raw"]["LedState"] == led_state]
-            data = data[:stub_frames].to_numpy()
-            timestamps = raw_fp_data["raw"]["SystemTimestamp"][raw_fp_data["raw"]["LedState"] == led_state]
-            timestamps = timestamps[:stub_frames].to_numpy()
-
-            fiber_photometry_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
-                description=fiber_photometry_response_series_metadata["fiber_photometry_table_region_description"],
-                region=fiber_photometry_response_series_metadata["fiber_photometry_table_region"],
-            )
-
-            fiber_photometry_response_series = FiberPhotometryResponseSeries(
-                name=fiber_photometry_response_series_metadata["name"],
-                description=fiber_photometry_response_series_metadata["description"],
-                data=data,
-                unit=fiber_photometry_response_series_metadata["unit"],
-                fiber_photometry_table_region=fiber_photometry_table_region,
-                timestamps=timestamps,
-            )
-            nwbfile.add_acquisition(fiber_photometry_response_series)
-
-
-class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
-    """An interface for processed IBL fiber photometry signals."""
-
-    interface_name = "ProcessedFiberPhotometryInterface"
-    REVISION: str | None = None
-
-    def __init__(self, one: ONE, session: str):
-        self.one = one
-        self.session = session
-        self.revision = self.REVISION
+        photometry_session_loader = PhotometrySessionLoader(eid=session, one=one)
+        photometry_session_loader.load_photometry()
+        self.photometry = photometry_session_loader.photometry
 
     @classmethod
     def get_data_requirements(cls) -> dict:
@@ -592,8 +326,7 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
 
     def get_metadata(self) -> DeepDict:
         """
-        Get metadata for the Meso segmentation data.
-
+        Get metadata for the fiber photometry data stream.
         Returns
         -------
         DeepDict
@@ -607,10 +340,37 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
         fp_metadata = load_dict_from_file(
             file_path=Path(__file__).parent.parent / "_metadata" / "fiber_photometry.yaml"
         )
+        # The fiber_photometry.yaml can be used to define metadata common to all experimental sessions, e.g., excitation source, optical filters, photosensor, indicators, etc.
+        # For metadata that varies from session to session, you can write a function that automatically updates the corresponding fields and call it here.
+        # For example, if the optical fiber was implanted in a different brain area or multiple areas, you will need to update the list in OpticalFibers with the corresponding fiber insertion values.
+        # Add a row to the FiberPhotometryTable and update the fiber_photometry_table_region to match the order of the FiberPhotometrySeries used to save the calcium and isosbestic signals.
+        # NB: The dimensions of the FiberPhotometrySeries are n_areas x time.
+        # _update_fiber_photometry_metadata(one, session, fp_metadata)
 
-        # Create Device entry
         metadata_copy = dict_deep_update(metadata_copy, fp_metadata)
         return metadata_copy
+
+    # TODO: write this function
+    def _update_fiber_photometry_metadata(self, fiber_photometry_metadata: dict) -> dict:
+        # pop default optical_fiber 
+        # pop default rows in FiberPhotometryTable 
+        signal_types = self.photometry.keys()
+        # check signal types are ["GCaMP", "Isosbestic"] 
+        # Raise "not implemented" error if there are other signal type
+        
+        for signal_type in signal_types:
+                
+            # extract targeted areas:
+            target_areas = self.photometry[signal_type].columns
+            
+            for target_area in target_areas:
+                # check if optical_fiber has been already added to fiber_photometry_metadata
+                # if not add location specific optical_fiber
+                # since we don't know the how the fiber-photometry metadata will be structured in the source data, use dummy values for fiber_insertion
+                # add row to default in FiberPhotometryTable depending on the signal type, updating the optical_fiber link to the newly generated OpticalFiber
+                # update the fiber_photometry_table_region in the corresponding FiberPhotometryResponseSeries 
+                
+        return fiber_photometry_metadata # updated
 
     def add_to_nwbfile(
         self,
@@ -631,10 +391,7 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
         metadata : dict, optional
             Metadata dictionary (not currently used)
         """
-        from ndx_fiber_photometry import (
-            CommandedVoltageSeries,
-            FiberPhotometryResponseSeries,
-        )
+        from ndx_fiber_photometry import FiberPhotometryResponseSeries
 
         processed_fp_data = self.one.load_object(self.session, **self.get_load_object_kwargs())
 
@@ -643,27 +400,15 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
         else:
             stub_frames = None
 
-        # TODO is there a commanded voltage series to add?
-        # Commanded Voltage Series
-        # for commanded_voltage_series_metadata in metadata["Ophys"]["FiberPhotometry"].get("CommandedVoltageSeries", []):
-        #     commanded_voltage_series = CommandedVoltageSeries(
-        #         name=commanded_voltage_series_metadata["name"],
-        #         description=commanded_voltage_series_metadata["description"],
-        #         data=data,
-        #         unit=commanded_voltage_series_metadata["unit"],
-        #         frequency=commanded_voltage_series_metadata["frequency"],
-        #         **timing_kwargs,
-        #     )
-        #     nwbfile.add_acquisition(commanded_voltage_series)
-
         # Add Fiber Photometry metadata if not already added
         if "fiber_photometry" not in nwbfile.lab_meta_data:
             fiber_photometry_table = add_fiberphotometry_table(nwbfile=nwbfile, metadata=metadata)
         else:
             fiber_photometry_table = nwbfile.lab_meta_data["fiber_photometry"].fiber_photometry_table
+
         # Fiber Photometry Response Series
-        all_series_metadata = metadata["Ophys"]["FiberPhotometry"]["ProcessedFiberPhotometryResponseSeries"]
-        ophys_module = get_module(nwbfile=nwbfile, name="ophys", description="Processed fiber photometry signals")
+        all_series_metadata = metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryResponseSeries"]
+        signal_types = self.photometry.keys()
 
         for fiber_photometry_response_series_metadata in all_series_metadata:
 
@@ -671,15 +416,15 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
                 description=fiber_photometry_response_series_metadata["fiber_photometry_table_region_description"],
                 region=fiber_photometry_response_series_metadata["fiber_photometry_table_region"],
             )
-            stream_name = fiber_photometry_response_series_metadata["stream_name"]
-            wavelength = fiber_photometry_table[fiber_photometry_table_region.data][
-                "excitation_wavelength_in_nm"
-            ].to_numpy()[0]
+
             # Get the data
-            data = processed_fp_data.signal[stream_name][processed_fp_data.signal["wavelength"] == wavelength]
-            data = data[:stub_frames].to_numpy()
-            timestamps = processed_fp_data.signal["times"][processed_fp_data.signal["wavelength"] == wavelength]
-            timestamps = timestamps[:stub_frames].to_numpy()
+            for signal_type in signal_types:
+                if signal_type.lowercase() in fiber_photometry_response_series_metadata["name"]
+                    break
+            data = self.photometry[signal_type]
+            data = data[:, :stub_frames]
+            timestamps = self.photometry[signal_type]["times"]
+            timestamps = timestamps[:stub_frames]
 
             fiber_photometry_response_series = FiberPhotometryResponseSeries(
                 name=fiber_photometry_response_series_metadata["name"],
@@ -689,4 +434,4 @@ class ProcessedFiberPhotometryInterface(BaseIBLDataInterface):
                 fiber_photometry_table_region=fiber_photometry_table_region,
                 timestamps=timestamps,
             )
-            ophys_module.add(fiber_photometry_response_series)
+            nwbfile.add_acquisition(fiber_photometry_response_series)

@@ -37,7 +37,7 @@ Ophys:
         excitation_mode: one-photon
         wavelength_range_in_nm: [400.0, 410.0] # TODO confirm wavelength range
     ExcitationSources:
-      - name: excitation_source_calcium_signal
+      - name: excitation_source_gcamp_signal
         description: excitation source for the sensor's fluorescence signal (470nm).
         model: excitation_source_model_calcium
       - name: excitation_source_isosbestic_control
@@ -89,29 +89,11 @@ Ophys:
         description: <description of the dichroic mirror> # TODO add description
         model: dichroic_mirror_model
         serial_number: <serial number of the dichroic mirror> # TODO add serial number
-    FiberPhotometryViruses:
-      - name: viral_vector_GCaMP
-        description: <description of the viral vector for GCaMP> # TODO add description
-        manufacturer: <manufacturer of the viral vector> # TODO add manufacturer
-        construct_name: <construct name of the viral vector> # TODO add construct name
-        titer_in_vg_per_ml: 0.0 # TODO add titer
-    FiberPhotometryVirusInjections:
-      - name: viral_vector_injection
-        description: Viral injection of GCaMP in <location>. # TODO add description
-        viral_vector: viral_vector_GCaMP
-        location: <location of the viral injection> # TODO add location
-        hemisphere: <hemisphere of the viral injection> # TODO add hemisphere
-        reference: <reference for the viral injection> # TODO add reference for the viral injection
-        ap_in_mm: 0.0 # TODO add AP position of the viral injection
-        ml_in_mm: 0.0 # TODO add ML position of the viral injection
-        dv_in_mm: 0.0 # TODO add DV position of the viral injection
-        volume_in_uL: 0.0 # TODO add volume of the viral injection
     FiberPhotometryIndicators:
       - name: GCaMP
         description: GCaMP calcium sensor in <location>.
         manufacturer: <manufacturer of the GCaMP> # TODO add manufacturer
         label: GCaMP
-        viral_vector_injection: viral_vector_injection
     FiberPhotometryTable:
       name: fiber_photometry_table
       description: For monitoring calcium dynamics in <location>.
@@ -122,7 +104,7 @@ Ophys:
           emission_wavelength_in_nm: 515.0 # TODO confirm emission wavelength
           indicator: GCaMP
           optical_fiber: optical_fiber
-          excitation_source: excitation_source_calcium_signal
+          excitation_source: excitation_source_gcamp_signal
           photodetector: photodetector
           emission_filter: emission_filter
           excitation_filter: excitation_filter
@@ -140,34 +122,13 @@ Ophys:
           dichroic_mirror: dichroic_mirror
 
     FiberPhotometryResponseSeries:
-      - name: raw_calcium_signal
-        description: The raw fluorescence signal from GCaMP Ca2+ bound emission (calcium signal).
-        stream_name: G0 # TODO confirm stream name
-        led_state: 2
-        target_area: <location>
+      - name: gcamp_signal
+        description: The fluorescence signal from GCaMP Ca2+ bound emission.
         unit: a.u.
         fiber_photometry_table_region: [0]
-        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the raw calcium signal.
-      - name: raw_isosbestic_signal
-        description: The raw fluorescence signal from GCaMP Ca2+ independent emission (isosbestic signal).
-        led_state: 1
-        stream_name: G1 # TODO confirm stream name
-        target_area: <location>
+        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the gcamp_signal.
+      - name: isosbestic_signal
+        description: The fluorescence signal from GCaMP Ca2+ independent emission (isosbestic signal).
         unit: a.u.
         fiber_photometry_table_region: [1]
-        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the raw isosbestic signal.
-    ProcessedFiberPhotometryResponseSeries:
-      - name: processed_calcium_signal
-        description: The processed fluorescence signal from GCaMP Ca2+ bound emission (calcium signal).
-        stream_name: G0 # TODO confirm stream name
-        target_area: <location>
-        unit: a.u.
-        fiber_photometry_table_region: [0]
-        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the processed calcium signal.
-      - name: processed_isosbestic_signal
-        description: The processed fluorescence signal from GCaMP Ca2+ independent emission (isosbestic signal).
-        stream_name: G1 # TODO confirm stream name
-        target_area: <location>
-        unit: a.u.
-        fiber_photometry_table_region: [1]
-        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the processed isosbestic signal.
+        fiber_photometry_table_region_description: The region of the FiberPhotometryTable corresponding to the isosbestic_signal.
