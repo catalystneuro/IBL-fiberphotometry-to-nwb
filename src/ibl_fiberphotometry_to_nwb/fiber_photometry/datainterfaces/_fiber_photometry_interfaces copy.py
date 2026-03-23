@@ -180,9 +180,9 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
     @classmethod
     def get_data_requirements(cls) -> dict:
         """
-        Declare exact data files required for processed fiber photometry signals.
+        Declare exact data files required for fiber photometry signals.
 
-        Note: This interface derives processed fiber photometry signals from specific files.
+        Note: This interface derives fiber photometry signals from specific files.
 
         Returns
         -------
@@ -442,9 +442,7 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
         stub_test: bool = False,
     ):
         """
-        Add raw fiber photometry data to the NWB file.
-
-        This method ONLY adds raw fiber photometry data to the NWB file.
+        Add fiber photometry data to the NWB file.
 
         Parameters
         ----------
@@ -486,7 +484,7 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
                     break
             signal_df = self.photometry[signal_type]
             data = signal_df.drop(columns=["times"], errors="ignore").iloc[:stub_frames].to_numpy()
-            timestamps = (signal_df["times"] if "times" in signal_df.columns else signal_df.index.to_numpy())
+            timestamps = signal_df["times"] if "times" in signal_df.columns else signal_df.index.to_numpy()
             timestamps = timestamps[:stub_frames]
 
             fiber_photometry_response_series = FiberPhotometryResponseSeries(

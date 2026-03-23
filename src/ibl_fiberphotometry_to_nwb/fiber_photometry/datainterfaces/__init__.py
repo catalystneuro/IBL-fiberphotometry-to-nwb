@@ -1,4 +1,4 @@
-from ._fiber_photometry_interfaces import (
+from ._optical_fibers_anatomical_localization import (
     FiberPhotometryInterface,
 )
 from ._fp_wheel_interfaces import (
