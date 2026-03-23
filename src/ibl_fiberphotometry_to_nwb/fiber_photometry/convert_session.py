@@ -25,6 +25,7 @@ from ibl_fiberphotometry_to_nwb.fiber_photometry.datainterfaces import (
     FiberPhotometryWheelKinematicsInterface,
     FiberPhotometryWheelMovementsInterface,
     FiberPhotometryWheelPositionInterface,
+    OpticalFibersAnatomicalLocalizationInterface,
 )
 from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
     get_available_tasks,
@@ -97,6 +98,12 @@ def session_to_nwb(
     # Fiber Photometry data
     data_interfaces["FiberPhotometry"] = FiberPhotometryInterface(**interface_kwargs)
     conversion_options.update({"FiberPhotometry": dict(stub_test=stub_test)})
+
+    # Anatomical Localization of OpticalFibers
+    data_interfaces["OpticalFibersAnatomicalLocalizationInterface"] = OpticalFibersAnatomicalLocalizationInterface(
+        **interface_kwargs
+    )
+    conversion_options.update({"OpticalFibersAnatomicalLocalizationInterface": dict()})
 
     # Behavioral data
     data_interfaces["BrainwideMapTrials"] = BrainwideMapTrialsInterface(**interface_kwargs)
