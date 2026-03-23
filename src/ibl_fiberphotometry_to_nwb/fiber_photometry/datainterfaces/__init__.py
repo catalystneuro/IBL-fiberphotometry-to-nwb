@@ -1,6 +1,5 @@
 from ._fiber_photometry_interfaces import (
-    ProcessedFiberPhotometryInterface,
-    RawFiberPhotometryInterface,
+    FiberPhotometryInterface,
 )
 from ._fp_wheel_interfaces import (
     FiberPhotometryWheelKinematicsInterface,
@@ -12,6 +11,5 @@ __all__ = [
     "FiberPhotometryWheelKinematicsInterface",
     "FiberPhotometryWheelMovementsInterface",
     "FiberPhotometryWheelPositionInterface",
-    "RawFiberPhotometryInterface",
-    "ProcessedFiberPhotometryInterface",
+    "FiberPhotometryInterface",
 ]

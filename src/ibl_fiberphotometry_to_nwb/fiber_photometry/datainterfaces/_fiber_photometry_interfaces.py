@@ -1,11 +1,9 @@
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional
 
 from brainbox.io.one import PhotometrySessionLoader
 from ibl_to_nwb.datainterfaces._base_ibl_interface import BaseIBLDataInterface
 from neuroconv.tools.fiber_photometry import add_ophys_device, add_ophys_device_model
-from neuroconv.tools.nwb_helpers import get_module
 from neuroconv.utils import DeepDict, dict_deep_update, load_dict_from_file
 from one.api import ONE
 from pynwb import NWBFile
@@ -344,38 +342,102 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
         # For metadata that varies from session to session, you can write a function that automatically updates the corresponding fields and call it here.
         # For example, if the optical fiber was implanted in a different brain area or multiple areas, you will need to update the list in OpticalFibers with the corresponding fiber insertion values.
         # Add a row to the FiberPhotometryTable and update the fiber_photometry_table_region to match the order of the FiberPhotometrySeries used to save the calcium and isosbestic signals.
-        # NB: The dimensions of the FiberPhotometrySeries are n_areas x time.
-        # _update_fiber_photometry_metadata(one, session, fp_metadata)
+        # NB: The dimensions of the FiberPhotometrySeries are time x n_areas.
+        updated_fp_metadata = self._update_fiber_photometry_metadata(fp_metadata)
+        fp_metadata = dict_deep_update(fp_metadata, updated_fp_metadata)
 
         metadata_copy = dict_deep_update(metadata_copy, fp_metadata)
         return metadata_copy
 
-    # TODO: write this function
     def _update_fiber_photometry_metadata(self, fiber_photometry_metadata: dict) -> dict:
-        # pop default optical_fiber 
-        # pop default rows in FiberPhotometryTable 
-        signal_types = self.photometry.keys()
-        # check signal types are ["GCaMP", "Isosbestic"] 
-        # Raise "not implemented" error if there are other signal type
-        
-        for signal_type in signal_types:
-                
-            # extract targeted areas:
-            target_areas = self.photometry[signal_type].columns
-            
+        fp_metadata = fiber_photometry_metadata["Ophys"]["FiberPhotometry"]
+
+        # Save template rows keyed by excitation wavelength before clearing defaults
+        default_rows = fp_metadata["FiberPhotometryTable"]["rows"]
+        row_templates = {row["excitation_wavelength_in_nm"]: row for row in default_rows}
+
+        # Pop default optical_fiber and default FiberPhotometryTable rows
+        fp_metadata["OpticalFibers"] = []
+        fp_metadata["FiberPhotometryTable"]["rows"] = []
+
+        signal_types = list(self.photometry.keys())
+
+        # Check signal types are only "GCaMP" and "Isosbestic"
+        supported_signal_types = {"GCaMP", "Isosbestic"}
+        unsupported = set(signal_types) - supported_signal_types
+        if unsupported:
+            raise NotImplementedError(
+                f"Signal types {unsupported} are not supported. Only {supported_signal_types} are implemented."
+            )
+
+        # Extract target brain areas from photometry DataFrame columns (exclude "times")
+        first_signal_type = signal_types[0]
+        target_areas = [col for col in self.photometry[first_signal_type].columns if col != "times"]
+
+        # Map each signal type to its excitation wavelength and template row
+        signal_type_to_excitation_nm = {"GCaMP": 470.0, "Isosbestic": 415.0}
+
+        # Add one OpticalFiber per unique target area (with dummy fiber_insertion values)
+        existing_fiber_names = set()
+        for target_area in target_areas:
+            optical_fiber_name = f"optical_fiber_{target_area}"
+            if optical_fiber_name not in existing_fiber_names:
+                fp_metadata["OpticalFibers"].append(
+                    {
+                        "name": optical_fiber_name,
+                        "description": f"Chronically implanted optic fiber in {target_area}.",
+                        "model": "optical_fiber_model",
+                        "serial_number": "<serial number of the optical fiber>",
+                        "fiber_insertion": {
+                            "insertion_position_ap_in_mm": 0.0,
+                            "insertion_position_ml_in_mm": 0.0,
+                            "insertion_position_dv_in_mm": 0.0,
+                            "position_reference": "<reference point>",
+                            "hemisphere": "<hemisphere>",
+                        },
+                    }
+                )
+                existing_fiber_names.add(optical_fiber_name)
+
+        # Add FiberPhotometryTable rows: all GCaMP rows first, then all Isosbestic rows.
+        # This matches the data layout (n_areas x time) per FiberPhotometryResponseSeries.
+        row_index = 0
+        signal_type_to_row_indices: dict[str, list[int]] = {st: [] for st in signal_types}
+
+        for signal_type in ["GCaMP", "Isosbestic"]:
+            if signal_type not in signal_types:
+                continue
+            excitation_nm = signal_type_to_excitation_nm[signal_type]
+            template = row_templates.get(excitation_nm, {})
             for target_area in target_areas:
-                # check if optical_fiber has been already added to fiber_photometry_metadata
-                # if not add location specific optical_fiber
-                # since we don't know the how the fiber-photometry metadata will be structured in the source data, use dummy values for fiber_insertion
-                # add row to default in FiberPhotometryTable depending on the signal type, updating the optical_fiber link to the newly generated OpticalFiber
-                # update the fiber_photometry_table_region in the corresponding FiberPhotometryResponseSeries 
-                
-        return fiber_photometry_metadata # updated
+                row = {
+                    **template,  # carry over all template fields (devices, wavelengths, indicator, etc.)
+                    "name": str(row_index),
+                    "location": target_area,
+                    "optical_fiber": f"optical_fiber_{target_area}",
+                }
+                fp_metadata["FiberPhotometryTable"]["rows"].append(row)
+                signal_type_to_row_indices[signal_type].append(row_index)
+                row_index += 1
+
+        # Map FiberPhotometryResponseSeries names to their signal type
+        series_name_to_signal_type = {
+            "gcamp_signal": "GCaMP",
+            "isosbestic_signal": "Isosbestic",
+        }
+
+        # Update fiber_photometry_table_region in each FiberPhotometryResponseSeries
+        for series_metadata in fp_metadata["FiberPhotometryResponseSeries"]:
+            signal_type = series_name_to_signal_type.get(series_metadata["name"])
+            if signal_type is not None and signal_type in signal_type_to_row_indices:
+                series_metadata["fiber_photometry_table_region"] = signal_type_to_row_indices[signal_type]
+
+        return fp_metadata
 
     def add_to_nwbfile(
         self,
         nwbfile: NWBFile,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
         *,
         stub_test: bool = False,
     ):
@@ -393,7 +455,8 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
         """
         from ndx_fiber_photometry import FiberPhotometryResponseSeries
 
-        processed_fp_data = self.one.load_object(self.session, **self.get_load_object_kwargs())
+        if metadata is None:
+            raise ValueError("metadata must be provided to add_to_nwbfile.")
 
         if stub_test:
             stub_frames = 1000  # TODO add stubbing interval
@@ -419,11 +482,11 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
 
             # Get the data
             for signal_type in signal_types:
-                if signal_type.lowercase() in fiber_photometry_response_series_metadata["name"]
+                if signal_type.lower() in fiber_photometry_response_series_metadata["name"]:
                     break
-            data = self.photometry[signal_type]
-            data = data[:, :stub_frames]
-            timestamps = self.photometry[signal_type]["times"]
+            signal_df = self.photometry[signal_type]
+            data = signal_df.drop(columns=["times"], errors="ignore").iloc[:stub_frames].to_numpy()
+            timestamps = (signal_df["times"] if "times" in signal_df.columns else signal_df.index.to_numpy())
             timestamps = timestamps[:stub_frames]
 
             fiber_photometry_response_series = FiberPhotometryResponseSeries(

@@ -14,18 +14,17 @@ from ibl_to_nwb.datainterfaces import (
     RoiMotionEnergyInterface,
     SessionEpochsInterface,
 )
-from ndx_ibl import IblMetadata, IblSubject
+from ndx_ibl import IblSubject
 from neuroconv.utils import dict_deep_update, load_dict_from_file
 from one.api import ONE
 from pynwb import NWBFile
 
 from ibl_fiberphotometry_to_nwb.fiber_photometry import FiberPhotometryNWBConverter
 from ibl_fiberphotometry_to_nwb.fiber_photometry.datainterfaces import (
+    FiberPhotometryInterface,
     FiberPhotometryWheelKinematicsInterface,
     FiberPhotometryWheelMovementsInterface,
     FiberPhotometryWheelPositionInterface,
-    ProcessedFiberPhotometryInterface,
-    RawFiberPhotometryInterface,
 )
 from ibl_fiberphotometry_to_nwb.fiber_photometry.utils import (
     get_available_tasks,
@@ -95,13 +94,9 @@ def session_to_nwb(
     conversion_options = dict()
     interface_kwargs = dict(one=one, session=eid)
 
-    # Raw Fiber Photometry data
-    data_interfaces["RawFiberPhotometry"] = RawFiberPhotometryInterface(**interface_kwargs)
-    conversion_options.update({"RawFiberPhotometry": dict(stub_test=stub_test)})
-
-    # Processed Fiber Photometry data
-    data_interfaces["ProcessedFiberPhotometry"] = ProcessedFiberPhotometryInterface(**interface_kwargs)
-    conversion_options.update({"ProcessedFiberPhotometry": dict(stub_test=stub_test)})
+    # Fiber Photometry data
+    data_interfaces["FiberPhotometry"] = FiberPhotometryInterface(**interface_kwargs)
+    conversion_options.update({"FiberPhotometry": dict(stub_test=stub_test)})
 
     # Behavioral data
     data_interfaces["BrainwideMapTrials"] = BrainwideMapTrialsInterface(**interface_kwargs)
