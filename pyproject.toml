@@ -18,6 +18,7 @@ dependencies = [
   "neuroconv",
   "nwbinspector",
   "ONE-api",
+  "ibllib@git+https://github.com/int-brain-lab/ibllib.git@photometry",
   "ndx-ibl-bwm@git+https://github.com/int-brain-lab/ndx-ibl-bwm.git",
   "ibl-to-nwb@git+https://github.com/h-mayorquin/IBL-to-nwb.git@heberto_conversion",
   "ndx-ibl@git+https://github.com/catalystneuro/ndx-ibl.git",
