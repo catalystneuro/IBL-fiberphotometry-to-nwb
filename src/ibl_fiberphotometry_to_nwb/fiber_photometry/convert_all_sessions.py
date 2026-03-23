@@ -1,45 +1,52 @@
-"""Primary script to run to convert all sessions in a dataset using session_to_nwb."""
-from pathlib import Path
-from typing import Union
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from pprint import pformat
+"""Script to convert all sessions in a dataset using session_to_nwb."""
+
 import traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
+from pprint import pformat
+from typing import List, Union
+
 from tqdm import tqdm
 
-from .convert_session import session_to_nwb
+from ibl_fiberphotometry_to_nwb.fiber_photometry.convert_session import session_to_nwb
 
 
 def dataset_to_nwb(
     *,
-    data_dir_path: Union[str, Path],
+    eids: List[str],
     output_dir_path: Union[str, Path],
+    stub_test: bool = False,
     max_workers: int = 1,
     verbose: bool = True,
 ):
-    """Convert the entire dataset to NWB.
+    """Convert a list of sessions to NWB.
 
     Parameters
     ----------
-    data_dir_path : Union[str, Path]
-        The path to the directory containing the raw data.
+    eids : List[str]
+        List of experiment IDs (session UUIDs) to convert.
     output_dir_path : Union[str, Path]
         The path to the directory where the NWB files will be saved.
+    stub_test : bool, optional
+        If True, run a lightweight test conversion with limited data, by default False.
     max_workers : int, optional
-        The number of workers to use for parallel processing, by default 1
+        The number of workers to use for parallel processing, by default 1.
     verbose : bool, optional
-        Whether to print verbose output, by default True
+        Whether to print verbose output, by default True.
     """
-    data_dir_path = Path(data_dir_path)
-    session_to_nwb_kwargs_per_session = get_session_to_nwb_kwargs_per_session(
-        data_dir_path=data_dir_path,
-    )
+    output_dir_path = Path(output_dir_path)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
     futures = []
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for session_to_nwb_kwargs in session_to_nwb_kwargs_per_session:
-            session_to_nwb_kwargs["output_dir_path"] = output_dir_path
-            session_to_nwb_kwargs["verbose"] = verbose
-            exception_file_path = data_dir_path / f"ERROR_<nwbfile_name>.txt" # Add error file path here
+        for eid in eids:
+            session_to_nwb_kwargs = dict(
+                eid=eid,
+                output_path=output_dir_path,
+                stub_test=stub_test,
+                verbose=verbose,
+            )
+            exception_file_path = output_dir_path / f"ERROR_{eid}_{mode}.txt"
             futures.append(
                 executor.submit(
                     safe_session_to_nwb,
@@ -52,58 +59,38 @@ def dataset_to_nwb(
 
 
 def safe_session_to_nwb(*, session_to_nwb_kwargs: dict, exception_file_path: Union[Path, str]):
-    """Convert a session to NWB while handling any errors by recording error messages to the exception_file_path.
+    """Convert a session to NWB while recording any errors to exception_file_path.
 
     Parameters
     ----------
     session_to_nwb_kwargs : dict
-        The arguments for session_to_nwb.
-    exception_file_path : Path
-        The path to the file where the exception messages will be saved.
+        The keyword arguments for session_to_nwb.
+    exception_file_path : Union[Path, str]
+        The path to the file where exception messages will be saved.
     """
     exception_file_path = Path(exception_file_path)
     try:
         session_to_nwb(**session_to_nwb_kwargs)
-    except Exception as e:
+    except Exception:
         with open(exception_file_path, mode="w") as f:
-            f.write(f"session_to_nwb_kwargs: \n {pformat(session_to_nwb_kwargs)}\n\n")
+            f.write(f"session_to_nwb_kwargs:\n{pformat(session_to_nwb_kwargs)}\n\n")
             f.write(traceback.format_exc())
-
-
-def get_session_to_nwb_kwargs_per_session(
-    *,
-    data_dir_path: Union[str, Path],
-):
-    """Get the kwargs for session_to_nwb for each session in the dataset.
-
-    Parameters
-    ----------
-    data_dir_path : Union[str, Path]
-        The path to the directory containing the raw data.
-
-    Returns
-    -------
-    list[dict[str, Any]]
-        A list of dictionaries containing the kwargs for session_to_nwb for each session.
-    """
-     #####
-     # # Implement this function to return the kwargs for session_to_nwb for each session
-     # This can be a specific list with hard-coded sessions, a path expansion or any conversion specific logic that you might need
-     #####
-    raise NotImplementedError 
 
 
 if __name__ == "__main__":
 
-    # Parameters for conversion
-    data_dir_path = Path("/Directory/With/Raw/Formats/")
-    output_dir_path = Path("~/conversion_nwb/")
+    eids = [
+        "fd688232-0dd8-400b-aa66-dc23460d9f98",
+    ]
+    output_dir_path = Path("E:/IBL-fiberphotometry-nwbfiles")
+    stub_test = False
     max_workers = 1
-    verbose = False
 
-    dataset_to_nwb(
-        data_dir_path=data_dir_path,
-        output_dir_path=output_dir_path,
-        max_workers=max_workers,
-        verbose=False,
-    )
+    for mode in ("processed", "raw"):
+        dataset_to_nwb(
+            eids=eids,
+            output_dir_path=output_dir_path,
+            stub_test=stub_test,
+            max_workers=max_workers,
+            verbose=True,
+        )
