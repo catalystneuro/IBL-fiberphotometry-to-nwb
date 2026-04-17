@@ -151,6 +151,19 @@ Several packages are installed from specific Git branches:
 | `ibl-to-nwb` | `h-mayorquin/IBL-to-nwb` | `heberto_conversion` |
 | `ndx-ibl` | `catalystneuro/ndx-ibl` | default |
 
+## Frozen Requirements
+
+A complete `pip freeze` snapshot of the environment is available at
+[requirements_freeze.txt](../../requirements_freeze.txt). This file pins every
+installed package (including transitive dependencies) and can be used to
+reproduce the exact environment:
+
+```bash
+pip install -r requirements_freeze.txt
+```
+
+---
+
 ## Reproducing the Environment
 
 To reproduce the exact environment on a different machine:
