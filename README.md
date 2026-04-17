@@ -3,6 +3,8 @@
 NWB conversion scripts for IBL fiber photometry data to the
 [Neurodata Without Borders](https://nwb-overview.readthedocs.io/) data format.
 
+**See [documentation/introduction_to_documentation.md](documentation/introduction_to_documentation.md) for complete documentation including system architecture, concepts, and how-tos.**
+
 ---
 
 ## Installation
@@ -20,7 +22,7 @@ git clone https://github.com/catalystneuro/IBL-fiberphotometry-to-nwb
 cd IBL-fiberphotometry-to-nwb
 conda env create --file make_env.yml
 conda activate ibl-fp-to-nwb
-pip install --editable ".[fiber_photometry]"
+pip install --editable .
 ```
 
 ### From GitHub with pip only
@@ -28,7 +30,7 @@ pip install --editable ".[fiber_photometry]"
 ```bash
 git clone https://github.com/catalystneuro/IBL-fiberphotometry-to-nwb
 cd IBL-fiberphotometry-to-nwb
-pip install --editable ".[fiber_photometry]"
+pip install --editable .
 ```
 
 Both GitHub options install the package in
@@ -62,7 +64,7 @@ python src/ibl_fiberphotometry_to_nwb/fiber_photometry/convert_session.py
 ```
 
 For detailed usage including batch conversion, stub mode, and customisation,
-see [USAGE.md](src/ibl_fiberphotometry_to_nwb/fiber_photometry/USAGE.md).
+see [conversion_overview.md](documentation/conversion/conversion_overview.md).
 
 ---
 
@@ -96,6 +98,20 @@ IBL-fiberphotometry-to-nwb/
 ├── make_env.yml
 ├── pyproject.toml
 ├── README.md
+├── documentation/                           # project documentation
+│   ├── introduction_to_documentation.md     # documentation index
+│   ├── conversion/                          # NWB conversion docs
+│   │   ├── introduction_to_conversion.md
+│   │   ├── conversion_overview.md
+│   │   ├── data_interface_design.md
+│   │   └── fiber_photometry_metadata_guide.md
+│   ├── development/                         # environment and dev workflow
+│   │   ├── environment.md
+│   │   └── introduction_to_development.md
+│   ├── ibl_science/                         # scientific context
+│   │   └── introduction_to_ibl_science.md
+│   └── one_api_data_access/                 # data loading
+│       └── introduction_to_one_api.md
 └── src/
     └── ibl_fiberphotometry_to_nwb/
         └── fiber_photometry/
@@ -103,7 +119,6 @@ IBL-fiberphotometry-to-nwb/
             ├── nwbconverter.py          # IblConverter and FiberPhotometryNWBConverter
             ├── convert_session.py       # session_to_nwb() — single-session entry point
             ├── convert_all_sessions.py  # dataset_to_nwb() — batch entry point
-            ├── USAGE.md                 # detailed usage guide
             ├── conversion_notes.md      # design notes and extension guide
             ├── _metadata/
             │   ├── general_metadata.yaml    # experiment-level NWB metadata
@@ -167,13 +182,6 @@ combines multiple data interfaces and coordinates metadata. This project uses:
 
 ## Extending the conversion
 
-### Adding real fiber tip coordinates
-
-`OpticalFibersAnatomicalLocalizationInterface` currently writes `NaN`
-placeholders. Once the IBL histology pipeline provides data, update the
-`add_to_nwbfile()` method — see the step-by-step guide in
-[conversion_notes.md](src/ibl_fiberphotometry_to_nwb/fiber_photometry/conversion_notes.md#how-to-modify-opticalfibersanatomicallocalizationinterface).
-
 ### Completing hardware metadata
 
 Fill in the `# TODO` fields in
@@ -181,10 +189,21 @@ Fill in the `# TODO` fields in
 (optical fiber model, excitation source, photodetector, filters, dichroic mirror).
 No code changes are required — the file is read dynamically.
 
+**See the [Fiber Photometry Metadata Guide](documentation/conversion/fiber_photometry_metadata_guide.md) for step-by-step instructions with examples for every hardware component.**
+
+### Adding real fiber tip coordinates
+
+`OpticalFibersAnatomicalLocalizationInterface` currently writes `NaN`
+placeholders. Once the IBL histology pipeline provides data, update the
+`add_to_nwbfile()` method — see the step-by-step guide in
+[conversion_notes.md](src/ibl_fiberphotometry_to_nwb/fiber_photometry/conversion_notes.md#how-to-modify-opticalfibersanatomicallocalizationinterface)
+or the [metadata guide](documentation/conversion/fiber_photometry_metadata_guide.md#adding-fiber-tip-coordinates-anatomical-localization).
+
 ### Modifying the FiberPhotometryInterface
 
 To add new brain areas, new signal types, or alternative source files, see
-[conversion_notes.md](src/ibl_fiberphotometry_to_nwb/fiber_photometry/conversion_notes.md#how-to-modify-fiberphotometryinterface).
+[conversion_notes.md](src/ibl_fiberphotometry_to_nwb/fiber_photometry/conversion_notes.md#how-to-modify-fiberphotometryinterface)
+or the [metadata guide](documentation/conversion/fiber_photometry_metadata_guide.md#supporting-a-new-signal-type).
 
 ### Adding a new conversion
 
@@ -194,3 +213,17 @@ To add new brain areas, new signal types, or alternative source files, see
 3. Create an `NWBConverter` subclass combining all interfaces.
 4. Write `convert_session.py` and `convert_all_sessions.py` scripts.
 5. Add metadata YAML files for experiment-level and hardware metadata.
+
+---
+
+## Environment
+
+- Python 3.10+ (tested on 3.10, 3.12, 3.13)
+- Uses `conda` for environment management
+- See [documentation/development/environment.md](documentation/development/environment.md) for the full list of installed packages and version details
+
+---
+
+## License
+
+BSD 3-Clause License. See [LICENSE](LICENSE) file for details.
