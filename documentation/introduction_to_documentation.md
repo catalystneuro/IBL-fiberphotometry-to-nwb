@@ -31,5 +31,6 @@ Environment setup, dependency management, and development workflow.
 ## Related Resources
 
 - [README.md](../README.md) — Project overview, installation, and quick start
+- [fiber_photometry.ipynb](../src/ibl_fiberphotometry_to_nwb/fiber_photometry/tutorials/fiber_photometry.ipynb) — Tutorial notebook: end-to-end walkthrough of converting and inspecting a fiber photometry session
 - [conversion_notes.md](../src/ibl_fiberphotometry_to_nwb/fiber_photometry/conversion_notes.md) — Design decisions, known limitations, and extension instructions
 - [IBL-to-NWB documentation](https://github.com/h-mayorquin/IBL-to-nwb/tree/heberto_conversion/documentation) — Documentation for the parent IBL-to-NWB project (Neuropixels / Brain Wide Map)
