@@ -186,7 +186,7 @@ PyQt5_sip==12.18.0
 pyqtgraph==0.14.0
 pytest==9.0.2
 python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dateutil_1751104122/work
-python-dotenv==1.2.1
+python-dotenv==1.2.2
 pytz==2025.2
 PyWavelets==1.9.0
 pywin32 @ file:///D:/bld/bld/rattler-build_pywin32_1756487139/work
