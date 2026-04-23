@@ -10,7 +10,52 @@ from pynwb import NWBFile
 
 
 def add_fiberphotometry_table(nwbfile: NWBFile, metadata: dict):
-    """Add fiber photometry devices to the NWB file based on the provided metadata."""
+    """
+    Add all fiber photometry devices, indicators, and the FiberPhotometryTable to an NWB file.
+
+    Reads hardware and indicator metadata from ``metadata["Ophys"]["FiberPhotometry"]``
+    and creates the following NWB objects in order:
+
+    1. **Device models** — ``OpticalFiberModel``, ``ExcitationSourceModel``,
+       ``PhotodetectorModel``, ``BandOpticalFilterModel``, ``EdgeOpticalFilterModel``,
+       ``DichroicMirrorModel`` (via :func:`neuroconv.tools.fiber_photometry.add_ophys_device_model`).
+    2. **Devices** — ``ExcitationSource``, ``Photodetector``, ``BandOpticalFilter``,
+       ``EdgeOpticalFilter``, ``DichroicMirror`` (via :func:`neuroconv.tools.fiber_photometry.add_ophys_device`).
+    3. **OpticalFibers** — created from metadata with an associated :class:`FiberInsertion`
+       object. Duplicates are skipped if the fiber name already exists in ``nwbfile.devices``.
+    4. **Viral vectors and injections** — ``FiberPhotometryViruses`` and
+       ``FiberPhotometryVirusInjections`` (optional; omitted if no entries in metadata).
+    5. **Indicators** — ``FiberPhotometryIndicators`` (required; raises if empty).
+    6. **FiberPhotometryTable** — one row per recording channel, referencing the
+       devices and indicator objects created above.
+
+    The resulting :class:`ndx_fiber_photometry.FiberPhotometry` container (which wraps
+    the table, viruses, injections, and indicators) is added to ``nwbfile.lab_meta_data``
+    under the key ``"fiber_photometry"``.
+
+    Parameters
+    ----------
+    nwbfile : NWBFile
+        The NWB file to populate. Devices and metadata objects are added in-place.
+    metadata : dict
+        Metadata dictionary following the structure defined in
+        ``_metadata/fiber_photometry.yaml`` (accessed via the ``Ophys.FiberPhotometry``
+        key path).
+
+    Returns
+    -------
+    FiberPhotometryTable
+        The newly created :class:`ndx_fiber_photometry.FiberPhotometryTable` instance.
+
+    Raises
+    ------
+    AssertionError
+        If an ``OpticalFiber``'s referenced model is not found in ``nwbfile.device_models``.
+    AssertionError
+        If a required row field is missing from a ``FiberPhotometryTable`` row entry.
+    ValueError
+        If no indicators are defined in the metadata.
+    """
     from ndx_fiber_photometry import (
         FiberPhotometry,
         FiberPhotometryIndicators,
@@ -164,12 +209,45 @@ def add_fiberphotometry_table(nwbfile: NWBFile, metadata: dict):
 
 
 class FiberPhotometryInterface(BaseIBLDataInterface):
-    """An interface for IBL fiber photometry signals."""
+    """
+    Data interface for IBL fiber photometry signals.
+
+    Loads GCaMP and isosbestic fluorescence signals from the IBL data store
+    (files ``photometry/photometry.signal.pqt`` and
+    ``photometry/photometryROI.locations.pqt``) using
+    :class:`brainbox.io.one.PhotometrySessionLoader`.
+
+    The interface writes two :class:`ndx_fiber_photometry.FiberPhotometryResponseSeries`
+    objects to the NWB file — one for the GCaMP signal (470 nm excitation) and one for
+    the isosbestic control signal (415 nm excitation). Each series has shape
+    ``(n_frames, n_brain_areas)`` and uses the photometry timestamps as the time axis.
+
+    The :meth:`get_metadata` method automatically customises ``fiber_photometry.yaml``
+    for each session by:
+
+    - Creating one ``OpticalFiber`` entry per unique brain area recorded.
+    - Populating ``FiberPhotometryTable`` rows (all GCaMP rows first, then all
+      isosbestic rows) to match the column order of the data arrays.
+    - Setting the ``fiber_photometry_table_region`` index lists in each
+      ``FiberPhotometryResponseSeries`` metadata entry.
+
+    This interface must run **before**
+    :class:`OpticalFibersAnatomicalLocalizationInterface`, which depends on the
+    ``OpticalFiber`` devices and ``FiberPhotometryTable`` added here.
+    """
 
     interface_name = "FiberPhotometryInterface"
     REVISION: str | None = None
 
     def __init__(self, one: ONE, session: str):
+        """
+        Parameters
+        ----------
+        one : ONE
+            ONE API instance connected to Alyx.
+        session : str
+            Session UUID (experiment ID, ``eid``).
+        """
         self.one = one
         self.session = session
         self.revision = self.REVISION
@@ -324,12 +402,19 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
 
     def get_metadata(self) -> DeepDict:
         """
-        Get metadata for the fiber photometry data stream.
+        Return session-specific fiber photometry metadata.
+
+        Loads the base metadata template from ``_metadata/fiber_photometry.yaml``
+        and calls :meth:`_update_fiber_photometry_metadata` to customise it for
+        this session (optical fibers per brain area, FiberPhotometryTable rows,
+        and FiberPhotometryResponseSeries region indices). The result is
+        deep-merged on top of the parent class metadata.
+
         Returns
         -------
         DeepDict
-            Dictionary containing metadata including plane segmentation details,
-            fluorescence data, and segmentation images.
+            Metadata dictionary with ``Ophys.FiberPhotometry`` fully populated
+            for this session.
         """
         metadata = super().get_metadata()
         metadata_copy = deepcopy(metadata)  # To avoid modifying the parent class's metadata
@@ -350,6 +435,52 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
         return metadata_copy
 
     def _update_fiber_photometry_metadata(self, fiber_photometry_metadata: dict) -> dict:
+        """
+        Customise the base fiber photometry metadata for this recording session.
+
+        This method modifies ``fiber_photometry_metadata["Ophys"]["FiberPhotometry"]``
+        in-place and returns the updated dictionary. It performs three main steps:
+
+        1. **OpticalFibers** — clears the template list and adds one
+           ``OpticalFiber`` entry per unique brain area found in
+           ``self.photometry`` (e.g. ``optical_fiber_DMS``, ``optical_fiber_NAc``).
+           Fiber insertion coordinates are set to placeholder values (``0.0`` and
+           ``"<reference point>"``); replace these with actual values once the
+           histology pipeline provides them.
+
+        2. **FiberPhotometryTable rows** — rebuilds the row list so that all GCaMP
+           rows come first (one per brain area) followed by all isosbestic rows.
+           This order matches the column layout of the ``FiberPhotometryResponseSeries``
+           data arrays (``n_frames × n_areas``).
+
+        3. **FiberPhotometryResponseSeries region indices** — updates the
+           ``fiber_photometry_table_region`` list in each series metadata entry to
+           reference the correct row indices from step 2.
+
+        Parameters
+        ----------
+        fiber_photometry_metadata : dict
+            Base metadata dictionary loaded from ``fiber_photometry.yaml``.
+
+        Returns
+        -------
+        dict
+            Updated ``fiber_photometry_metadata`` with session-specific
+            ``OpticalFibers``, ``FiberPhotometryTable.rows``, and
+            ``FiberPhotometryResponseSeries`` entries.
+
+        Raises
+        ------
+        NotImplementedError
+            If the photometry data contains signal types other than
+            ``"GCaMP"`` and ``"Isosbestic"``.
+
+        Notes
+        -----
+        To add support for a new brain area or a new excitation wavelength,
+        update ``fiber_photometry.yaml`` and extend
+        ``signal_type_to_excitation_nm`` in this method accordingly.
+        """
         fp_metadata = fiber_photometry_metadata["Ophys"]["FiberPhotometry"]
 
         # Save template rows keyed by excitation wavelength before clearing defaults
@@ -442,14 +573,34 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
         stub_test: bool = False,
     ):
         """
-        Add fiber photometry data to the NWB file.
+        Add fiber photometry devices and response series to the NWB file.
+
+        If the ``"fiber_photometry"`` lab metadata container does not yet exist,
+        this method calls :func:`add_fiberphotometry_table` to create all device
+        models, devices, indicators, and the :class:`FiberPhotometryTable`.
+
+        It then iterates over every ``FiberPhotometryResponseSeries`` entry in
+        ``metadata["Ophys"]["FiberPhotometry"]["FiberPhotometryResponseSeries"]``
+        and adds a :class:`ndx_fiber_photometry.FiberPhotometryResponseSeries`
+        to ``nwbfile.acquisition`` for each one. The data shape is
+        ``(n_frames, n_brain_areas)``; when ``stub_test=True`` only the first
+        1000 frames are written.
 
         Parameters
         ----------
         nwbfile : NWBFile
-            The NWB file to add data to
-        metadata : dict, optional
-            Metadata dictionary (not currently used)
+            The NWB file to add data to.
+        metadata : dict
+            Metadata dictionary produced by :meth:`get_metadata`. Must contain
+            the ``Ophys.FiberPhotometry.FiberPhotometryResponseSeries`` key.
+        stub_test : bool, optional
+            If ``True``, truncate each series to the first 1000 frames to
+            create a lightweight test file, by default False.
+
+        Raises
+        ------
+        ValueError
+            If ``metadata`` is ``None``.
         """
         from ndx_fiber_photometry import FiberPhotometryResponseSeries
 
@@ -457,7 +608,7 @@ class FiberPhotometryInterface(BaseIBLDataInterface):
             raise ValueError("metadata must be provided to add_to_nwbfile.")
 
         if stub_test:
-            stub_frames = 1000  # TODO add stubbing interval
+            stub_frames = 1000
         else:
             stub_frames = None
 

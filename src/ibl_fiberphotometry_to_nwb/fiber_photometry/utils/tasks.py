@@ -2,8 +2,34 @@ from one.api import ONE
 
 
 def get_available_tasks(one: ONE, session: str) -> list[str]:
-    """Get available tasks for a given session."""
+    """
+    Return the list of task names available for a given session.
 
+    Queries the ONE API for ALF collections matching the pattern
+    ``*alf/task*`` and extracts the task directory name (e.g. ``"task_00"``,
+    ``"task_01"``) from each matching collection path.
+
+    Parameters
+    ----------
+    one : ONE
+        ONE API instance connected to Alyx.
+    session : str
+        Session UUID (experiment ID, ``eid``).
+
+    Returns
+    -------
+    list[str]
+        Sorted list of task names found for the session (e.g.
+        ``["task_00", "task_01"]``). Returns an empty list if no task
+        collections are found.
+
+    Examples
+    --------
+    >>> from one.api import ONE
+    >>> one = ONE()
+    >>> get_available_tasks(one, "fd688232-0dd8-400b-aa66-dc23460d9f98")
+    ['task_00']
+    """
     collections = one.list_collections(
         eid=session,
         filename="*alf/task*",

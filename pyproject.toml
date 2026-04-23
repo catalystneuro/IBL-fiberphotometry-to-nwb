@@ -15,7 +15,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "neuroconv",
+  "neuroconv==0.9.2",
   "nwbinspector",
   "ONE-api",
   "ibllib@git+https://github.com/int-brain-lab/ibllib.git@photometry",
@@ -27,11 +27,6 @@ dependencies = [
 
 [project.urls]
 Repository="https://github.com/catalystneuro/IBL-fiberphotometry-to-nwb"
-
-[project.optional-dependencies]
-fiber_photometry = [
-  "neuroconv==0.7.0"   # Pinned dependencies to specific versions
-]
 
 [dependency-groups]
 dev = [

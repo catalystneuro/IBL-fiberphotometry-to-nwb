@@ -81,7 +81,7 @@ def session_to_nwb(
     conversion_mode = "stub" if stub_test else "full"
     output_dir = output_path / conversion_mode / f"sub-{subject_id_for_filenames}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    nwbfile_path = output_dir / f"sub-{subject_id_for_filenames}_ses-{eid}_desc-raw+processed_behavior+ophys.nwb"
+    nwbfile_path = output_dir / f"sub-{subject_id_for_filenames}_ses-{eid}_behavior+ophys.nwb"
 
     # ========================================================================
     # STEP 1: Define data interfaces
