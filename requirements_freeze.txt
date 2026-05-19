@@ -73,7 +73,7 @@ iblatlas==0.10.0
 ibllib @ git+https://github.com/int-brain-lab/ibllib.git@0c5bf5eee4d83f39ce5ecc94d903766a678dae76
 iblqt==0.8.2
 iblutil==1.20.0
-idna==3.11
+idna==3.15
 imagecodecs==2026.1.14
 ImageIO==2.37.2
 iniconfig==2.3.0
