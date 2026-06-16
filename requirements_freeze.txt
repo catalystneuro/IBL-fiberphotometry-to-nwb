@@ -174,7 +174,7 @@ pydantic_core==2.41.5
 pyflakes==3.4.0
 Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1750615794071/work
 pyinspect==0.1.0
-PyJWT==2.11.0
+PyJWT==2.13.0
 pynapple==0.10.3
 pynrrd==1.1.3
 pynwb @ git+https://github.com/NeurodataWithoutBorders/pynwb.git@286de2d3525d7a49bdce260d5e14f8a339d2dc42
