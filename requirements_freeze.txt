@@ -114,7 +114,7 @@ ml_dtypes==0.5.4
 more-itertools==10.8.0
 morphapi==0.3.2
 morphio==3.4.0
-msgpack==1.1.2
+msgpack==1.2.1
 mtscomp==1.0.2
 multidict==6.7.1
 mypy_extensions==1.1.0
