@@ -169,7 +169,7 @@ pycodestyle==2.14.0
 pycparser==3.0
 pycryptodomex==3.23.0
 pydantic==2.12.5
-pydantic-settings==2.13.0
+pydantic-settings==2.14.2
 pydantic_core==2.41.5
 pyflakes==3.4.0
 Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1750615794071/work
