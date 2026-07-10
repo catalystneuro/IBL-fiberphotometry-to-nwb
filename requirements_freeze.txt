@@ -218,7 +218,7 @@ shapely==2.1.2
 six @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_six_1753199211/work
 slidingRP==1.1.1
 slurmio==0.1.2
-soupsieve==2.8.3
+soupsieve==2.8.4
 sparse==0.17.0
 spikeinterface==0.103.2
 stack_data @ file:///home/conda/feedstock_root/build_artifacts/stack_data_1733569443808/work
